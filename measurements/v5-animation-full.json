@@ -1,0 +1,17 @@
+[
+  "mode=budget pattern=blocks running=0 fault=0 target_fps=30 spi_mhz=20 scans_since_clean=0 free_heap=283228 planner_bytes=132616 end=0x02 pulses=7/7 speed=24 frozen=0 window=full analog=0 guard_ms=3000 fast_hw_reset=1 version=5",
+  "mode=budget pattern=blocks running=0 fault=0 target_fps=0 spi_mhz=20 scans_since_clean=0 free_heap=283228 planner_bytes=132616 end=0x02 pulses=7/7 speed=24 frozen=0 window=full analog=0 guard_ms=3000 fast_hw_reset=1 version=5",
+  "PHASE full_busy_finished; guard_ms=3000; fast_not_loaded",
+  "CLEAN full_and_prepare_ms=4751 running=1",
+  "mode=budget pattern=blocks running=1 fault=0 target_fps=0 spi_mhz=20 scans_since_clean=0 free_heap=283228 planner_bytes=132616 end=0x02 pulses=7/7 speed=24 frozen=0 window=full analog=1 guard_ms=3000 fast_hw_reset=1 version=5",
+  "MEASURE mode=budget pattern=blocks scan_hz=37.49 plan_us=714 upload_us=4244 busy_us=20016 render_us=997 commit_us=527 overruns=0 scans=75 heap=283228",
+  "MEASURE mode=budget pattern=blocks scan_hz=38.47 plan_us=743 upload_us=4244 busy_us=20017 render_us=997 commit_us=532 overruns=0 scans=152 heap=282964",
+  "MEASURE mode=budget pattern=blocks scan_hz=38.47 plan_us=742 upload_us=4244 busy_us=20017 render_us=997 commit_us=531 overruns=0 scans=229 heap=282964",
+  "MEASURE mode=budget pattern=blocks scan_hz=38.47 plan_us=743 upload_us=4244 busy_us=20018 render_us=997 commit_us=531 overruns=0 scans=306 heap=282964",
+  "MEASURE mode=budget pattern=blocks scan_hz=38.47 plan_us=742 upload_us=4244 busy_us=20018 render_us=997 commit_us=531 overruns=0 scans=383 heap=282964",
+  "MEASURE mode=budget pattern=blocks scan_hz=38.47 plan_us=740 upload_us=4243 busy_us=20017 render_us=997 commit_us=529 overruns=0 scans=460 heap=282964",
+  "SETTLE completing current target, then HOLD and analog off",
+  "SETTLED running=0 analog_off=1 (no full refresh)",
+  "mode=budget pattern=blocks running=0 fault=0 target_fps=0 spi_mhz=20 scans_since_clean=481 free_heap=282964 planner_bytes=132616 end=0x02 pulses=7/7 speed=24 frozen=1 window=full analog=0 guard_ms=3000 fast_hw_reset=1 version=5",
+  "mode=budget pattern=blocks running=0 fault=0 target_fps=0 spi_mhz=20 scans_since_clean=481 free_heap=282964 planner_bytes=132616 end=0x02 pulses=7/7 speed=24 frozen=1 window=full analog=0 guard_ms=3000 fast_hw_reset=1 version=5"
+]

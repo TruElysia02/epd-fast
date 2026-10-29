@@ -1,0 +1,37 @@
+{
+  "stopped_healthy": true,
+  "metrics": [
+    {
+      "scan_hz": 36.99,
+      "plan_us": 2007.0,
+      "upload_us": 2216.0,
+      "busy_us": 20017.0,
+      "render_us": 946.0,
+      "commit_us": 1716.0
+    },
+    {
+      "scan_hz": 38.66,
+      "plan_us": 1060.0,
+      "upload_us": 3030.0,
+      "busy_us": 20016.0,
+      "render_us": 958.0,
+      "commit_us": 818.0
+    }
+  ],
+  "log": [
+    "mode=budget pattern=blocks running=0 fault=0 target_fps=0 spi_mhz=20 scans_since_clean=0 free_heap=282964 planner_bytes=132616 end=0x02 pulses=7/7 speed=80 frozen=0 version=2",
+    "mode=budget pattern=blocks running=0 fault=0 target_fps=0 spi_mhz=20 scans_since_clean=0 free_heap=282964 planner_bytes=132616 end=0x02 pulses=7/7 speed=80 frozen=0 version=2",
+    "CLEAN full_and_prepare_ms=1616 running=0",
+    "mode=budget pattern=blocks running=0 fault=0 target_fps=0 spi_mhz=20 scans_since_clean=0 free_heap=282964 planner_bytes=132616 end=0x02 pulses=7/7 speed=80 frozen=0 version=2",
+    "CLEAN full_and_prepare_ms=1616 running=0",
+    "mode=budget pattern=blocks running=0 fault=0 target_fps=0 spi_mhz=20 scans_since_clean=0 free_heap=282964 planner_bytes=132616 end=0x02 pulses=7/7 speed=80 frozen=0 version=2",
+    "CLEAN full_and_prepare_ms=1616 running=0",
+    "mode=budget pattern=blocks running=0 fault=0 target_fps=0 spi_mhz=20 scans_since_clean=0 free_heap=282964 planner_bytes=132616 end=0x02 pulses=7/7 speed=80 frozen=0 version=2",
+    "CLEAN full_and_prepare_ms=1706 running=1",
+    "mode=net pattern=blocks running=1 fault=0 target_fps=0 spi_mhz=20 scans_since_clean=0 free_heap=282964 planner_bytes=132616 end=0x02 pulses=7/7 speed=80 frozen=0 version=2",
+    "MEASURE mode=net pattern=blocks scan_hz=36.99 plan_us=2007 upload_us=2216 busy_us=20017 render_us=946 commit_us=1716 overruns=0 scans=74 heap=282964",
+    "MEASURE mode=net pattern=blocks scan_hz=38.66 plan_us=1060 upload_us=3030 busy_us=20016 render_us=958 commit_us=818 overruns=0 scans=152 heap=282964",
+    "CLEAN full_and_prepare_ms=1755 running=0",
+    "mode=net pattern=blocks running=0 fault=0 target_fps=0 spi_mhz=20 scans_since_clean=0 free_heap=282964 planner_bytes=132616 end=0x02 pulses=7/7 speed=80 frozen=0 version=2"
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "stopped_healthy": true,
+  "metrics": [
+    {
+      "scan_hz": 39.95,
+      "plan_us": 930.0,
+      "upload_us": 2157.0,
+      "busy_us": 20015.0,
+      "render_us": 996.0,
+      "commit_us": 724.0
+    },
+    {
+      "scan_hz": 39.14,
+      "plan_us": 958.0,
+      "upload_us": 2980.0,
+      "busy_us": 20016.0,
+      "render_us": 1008.0,
+      "commit_us": 736.0
+    }
+  ],
+  "log": [
+    "mode=budget pattern=blocks running=0 fault=0 target_fps=0 spi_mhz=10 scans_since_clean=0 free_heap=282964 planner_bytes=132616 end=0x02 pulses=7/7 speed=80 frozen=0 version=2",
+    "mode=budget pattern=blocks running=0 fault=0 target_fps=0 spi_mhz=10 scans_since_clean=0 free_heap=282964 planner_bytes=132616 end=0x02 pulses=7/7 speed=80 frozen=0 version=2",
+    "CLEAN full_and_prepare_ms=1619 running=0",
+    "mode=budget pattern=blocks running=0 fault=0 target_fps=0 spi_mhz=20 scans_since_clean=0 free_heap=282964 planner_bytes=132616 end=0x02 pulses=7/7 speed=80 frozen=0 version=2",
+    "CLEAN full_and_prepare_ms=1615 running=0",
+    "mode=budget pattern=blocks running=0 fault=0 target_fps=0 spi_mhz=20 scans_since_clean=0 free_heap=282964 planner_bytes=132616 end=0x02 pulses=7/7 speed=80 frozen=0 version=2",
+    "CLEAN full_and_prepare_ms=1615 running=0",
+    "mode=budget pattern=blocks running=0 fault=0 target_fps=0 spi_mhz=20 scans_since_clean=0 free_heap=282964 planner_bytes=132616 end=0x02 pulses=7/7 speed=80 frozen=0 version=2",
+    "CLEAN full_and_prepare_ms=1707 running=1",
+    "mode=budget pattern=blocks running=1 fault=0 target_fps=0 spi_mhz=20 scans_since_clean=0 free_heap=282964 planner_bytes=132616 end=0x02 pulses=7/7 speed=80 frozen=0 version=2",
+    "MEASURE mode=budget pattern=blocks scan_hz=39.95 plan_us=930 upload_us=2157 busy_us=20015 render_us=996 commit_us=724 overruns=0 scans=80 heap=282964",
+    "MEASURE mode=budget pattern=blocks scan_hz=39.14 plan_us=958 upload_us=2980 busy_us=20016 render_us=1008 commit_us=736 overruns=0 scans=159 heap=282964",
+    "CLEAN full_and_prepare_ms=1755 running=0",
+    "mode=budget pattern=blocks running=0 fault=0 target_fps=0 spi_mhz=20 scans_since_clean=0 free_heap=282964 planner_bytes=132616 end=0x02 pulses=7/7 speed=80 frozen=0 version=2"
+  ]
+}

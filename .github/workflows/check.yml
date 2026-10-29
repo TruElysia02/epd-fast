@@ -1,0 +1,23 @@
+name: Build and test
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Planner tests
+        run: |
+          mkdir -p build
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tests/planner_test.cpp -o build/planner_test
+          ./build/planner_test
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tests/planner_equivalence.cpp -o build/planner_equivalence
+          ./build/planner_equivalence
+      - name: Python syntax
+        run: python -m compileall -q tools
+      - name: Install PlatformIO
+        run: python -m pip install platformio==6.1.19
+      - name: Build firmware without video
+        run: pio run -e xiao_esp32c6

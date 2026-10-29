@@ -1,0 +1,10 @@
+[
+  "mode=budget pattern=blocks running=0 fault=0 target_fps=30 spi_mhz=20 scans_since_clean=0 free_heap=283228 planner_bytes=132616 end=0x02 pulses=7/7 speed=24 frozen=0 window=full analog=0 guard_ms=3000 fast_hw_reset=1 version=5",
+  "CLEAN full_and_prepare_ms=1616 running=0",
+  "PHASE full_finished; waiting_3000ms; no_fast_LUT",
+  "PHASE fast_prepared; pixel_scans=0; auto_off_in_8s",
+  "mode=budget pattern=blocks running=0 fault=0 target_fps=30 spi_mhz=20 scans_since_clean=0 free_heap=283228 planner_bytes=132616 end=0x02 pulses=7/7 speed=24 frozen=0 window=full analog=1 guard_ms=3000 fast_hw_reset=1 version=5",
+  "PHASE diagnostic_auto_off; pixel_scans=0; image_retained",
+  "mode=budget pattern=blocks running=0 fault=0 target_fps=30 spi_mhz=20 scans_since_clean=0 free_heap=283228 planner_bytes=132616 end=0x02 pulses=7/7 speed=24 frozen=0 window=full analog=0 guard_ms=3000 fast_hw_reset=1 version=5",
+  "mode=budget pattern=blocks running=0 fault=0 target_fps=30 spi_mhz=20 scans_since_clean=0 free_heap=283228 planner_bytes=132616 end=0x02 pulses=7/7 speed=24 frozen=0 window=full analog=0 guard_ms=3000 fast_hw_reset=1 version=5"
+]

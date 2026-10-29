@@ -1,0 +1,12 @@
+.pio/
+.scratch/
+build/
+__pycache__/
+*.pyc
+*.exe
+assets/*.bin
+assets/*.hashes
+assets/*.mp4
+assets/*.mov
+.env
+.env.*
