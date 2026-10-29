@@ -1,0 +1,26 @@
+{
+  "profile": {
+    "black": 11,
+    "white": 7
+  },
+  "healthy_loop": true,
+  "log": [
+    "mode=budget pattern=badapple running=1 fault=0 target_fps=0 spi_mhz=20 end=0x02 pulses=7/11 window=partial analog=1 guard_ms=0 video_loop=1 fr=5 gate_first=0 gate_last=295 reuse=1 wait=irq video_ready=1 content_fps=60 version=7",
+    "CLEAN full_and_prepare_ms=1755 running=0",
+    "mode=budget pattern=badapple running=0 fault=0 target_fps=0 spi_mhz=20 end=0x02 pulses=7/11 window=partial analog=0 guard_ms=0 video_loop=0 fr=5 gate_first=0 gate_last=295 reuse=1 wait=irq video_ready=1 content_fps=60 version=7",
+    "CLEAN full_and_prepare_ms=1615 running=0",
+    "mode=budget pattern=badapple running=0 fault=0 target_fps=0 spi_mhz=20 end=0x02 pulses=11/7 window=partial analog=0 guard_ms=0 video_loop=0 fr=5 gate_first=0 gate_last=295 reuse=1 wait=irq video_ready=1 content_fps=60 version=7",
+    "APPLE content_fps=60 duration_ms=232000 audio=off",
+    "PHASE full_busy_finished; guard_ms=0; fast_not_loaded",
+    "CLEAN full_and_prepare_ms=1750 running=1",
+    "mode=budget pattern=badapple running=1 fault=0 target_fps=0 spi_mhz=20 end=0x02 pulses=11/7 window=partial analog=1 guard_ms=0 video_loop=1 fr=5 gate_first=0 gate_last=295 reuse=1 wait=irq video_ready=1 content_fps=60 version=7",
+    "MEASURE mode=budget pattern=badapple scan_hz=26.00 plan_us=651 upload_us=1113 busy_us=8016 render_us=95 commit_us=1122 overruns=0 scans=52 heap=253152 content_hz=59.50 skipped=0",
+    "MEASURE mode=budget pattern=badapple scan_hz=80.95 plan_us=1112 upload_us=1843 busy_us=8016 render_us=692 commit_us=922 overruns=0 scans=214 heap=253152 content_hz=60.46 skipped=0",
+    "MEASURE mode=budget pattern=badapple scan_hz=88.33 plan_us=870 upload_us=1268 busy_us=8016 render_us=617 commit_us=682 overruns=0 scans=391 heap=253152 content_hz=59.89 skipped=0",
+    "MEASURE mode=budget pattern=badapple scan_hz=83.88 plan_us=1041 upload_us=1528 busy_us=8017 render_us=659 commit_us=847 overruns=0 scans=559 heap=253152 content_hz=59.92 skipped=0",
+    "MEASURE mode=budget pattern=badapple scan_hz=87.33 plan_us=750 upload_us=1634 busy_us=8018 render_us=612 commit_us=565 overruns=0 scans=734 heap=253152 content_hz=60.38 skipped=0",
+    "MEASURE mode=budget pattern=badapple scan_hz=78.71 plan_us=1341 upload_us=1711 busy_us=8017 render_us=703 commit_us=1118 overruns=0 scans=892 heap=253152 content_hz=58.79 skipped=1",
+    "MEASURE mode=budget pattern=badapple scan_hz=89.16 plan_us=933 upload_us=1014 busy_us=8017 render_us=601 commit_us=766 overruns=0 scans=1071 heap=253152 content_hz=59.28 skipped=2",
+    "mode=budget pattern=badapple running=1 fault=0 target_fps=0 spi_mhz=20 end=0x02 pulses=11/7 window=partial analog=1 guard_ms=0 video_loop=1 fr=5 gate_first=0 gate_last=295 reuse=1 wait=irq video_ready=1 content_fps=60 version=7"
+  ]
+}

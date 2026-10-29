@@ -7,6 +7,7 @@ struct ScanTiming {
   uint32_t uploadUs = 0;
   uint32_t busyUs = 0;
   uint32_t activationUs = 0;
+  uint8_t planeWrites = 0;
 };
 
 class Panel {
@@ -22,6 +23,20 @@ class Panel {
   uint8_t endOption() const { return endOption_; }
   void setPartialUpload(bool enabled) { partialUpload_ = enabled; }
   bool partialUpload() const { return partialUpload_; }
+  // Applied by the next prepareFast(); callers stop/full-refresh before changing.
+  bool setFrameRate(uint8_t code);
+  uint8_t frameRate() const { return frameRate_; }
+  void setPairedHold(bool enabled) { pairedHold_ = enabled; }
+  bool pairedHold() const { return pairedHold_; }
+  void setWeakState(bool enabled) { weakState_ = enabled; }
+  bool weakState() const { return weakState_; }
+  bool setWeakSource(uint8_t selector);
+  uint8_t weakSource() const { return weakSource_; }
+  bool setScanRows(uint16_t first, uint16_t last);
+  uint16_t scanFirst() const { return scanFirst_; }
+  uint16_t scanLast() const { return scanLast_; }
+  void setReuseMasks(bool enabled) { reuseMasks_ = enabled; }
+  bool reuseMasks() const { return reuseMasks_; }
   bool analogOn() const { return analogOn_; }
   bool powerOff();
   bool setClock(uint32_t hz);
@@ -44,6 +59,15 @@ class Panel {
   uint32_t clockHz_ = 20000000;
   bool analogOn_ = false;
   bool partialUpload_ = false; // Full RAM writes until optical window behavior is verified.
+  uint8_t frameRate_ = 2;
+  bool pairedHold_ = false;
+  bool weakState_ = false;
+  uint8_t weakSource_ = 3;
+  uint16_t scanFirst_ = 0, scanLast_ = kHeight - 1;
+  bool reuseMasks_ = false;
+  bool masksValid_ = false;
+  uint8_t cachedBlack_[kFrameBytes]{};
+  uint8_t cachedWhite_[kFrameBytes]{};
   uint8_t endOption_ = 0x02;
   bool pending_ = false;
   int64_t pendingSince_ = 0;

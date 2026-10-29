@@ -29,7 +29,7 @@ try:
     end = time.monotonic() + 2
     while time.monotonic() < end:
         value = line()
-        if 'version=6' in value and 'fault=0' in value: healthy = True; break
+        if ('version=6' in value or 'version=7' in value) and 'fault=0' in value: healthy = True; break
     if not healthy: raise RuntimeError('Healthy video firmware not confirmed')
     s.write((f'apple {a.seconds}\n' if a.seconds else 'apple\n').encode())
     deadline = time.monotonic() + (a.seconds or 233) + 60

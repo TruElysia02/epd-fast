@@ -168,7 +168,7 @@ running=0、fault=0、analog=0；保留末帧，没有额外全刷。
 解码测试逐帧核对全部 4641 帧，并检查随机跳转、截断和错误偏移：
 
 ```powershell
-g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tests/apple_test.cpp -o tests/apple_test.exe
+g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tests/apple_test.cpp lib/miniz/miniz_tinfl.c -o tests/apple_test.exe
 ./tests/apple_test.exe
 ```
 

@@ -63,6 +63,40 @@ int main() {
       for (size_t p = 0; p < kPixels; ++p) assert(fast.netAt(p) == ref.net[p]);
     }
   }
+  // Replanning the same target before commit may refresh budgets, but must
+  // not change masks or delivered net. A real transport fault latches stopped;
+  // arbitrary target changes after an abandoned plan are not a supported retry.
+  for (unsigned seed : {7u, 29u, 301u}) {
+    std::mt19937 trial(seed);
+    for (DriveMode mode : {DriveMode::Budget, DriveMode::Net}) {
+      ref = {}; memset(image, 0xff, sizeof(image));
+      memcpy(ref.target, image, sizeof(image));
+      const unsigned blackLimit = 1 + trial() % 32, whiteLimit = 1 + trial() % 32;
+      fast.reset(mode, image); fast.setPulses(blackLimit, whiteLimit);
+      for (unsigned n = 0; n < 360; ++n) {
+        if (n % 37 == 0) for (auto& x : image) x = trial();
+        else if (n % 5) for (int bit = 0; bit < 20; ++bit) {
+          image[trial() % kFrameBytes] ^= uint8_t(1u << (trial() % 8));
+        }
+        const bool settle = trial() % 11 == 0;
+        const bool a = fast.plan(image, settle);
+        const bool b = ref.step(image, mode, blackLimit, whiteLimit, settle);
+        assert(a == b);
+        assert(!memcmp(fast.black, ref.black, kFrameBytes));
+        assert(!memcmp(fast.white, ref.white, kFrameBytes));
+        for (size_t p = 0; p < kPixels; ++p) assert(fast.netAt(p) == ref.net[p]);
+        if (trial() % 7 == 0) {
+          assert(fast.plan(image, settle) == a);
+          assert(!memcmp(fast.black, ref.black, kFrameBytes));
+          assert(!memcmp(fast.white, ref.white, kFrameBytes));
+          for (size_t p = 0; p < kPixels; ++p) assert(fast.netAt(p) == ref.net[p]);
+        }
+        if (a) { fast.commit(image, settle); ref.commit(image, mode, settle); }
+        else if (!settle) { fast.accept(image); memcpy(ref.target, image, kFrameBytes); }
+        for (size_t p = 0; p < kPixels; ++p) assert(fast.netAt(p) == ref.net[p]);
+      }
+    }
+  }
   // Mirror exactly the partial upload algorithm, including the first clear.
   MaskRows previous{0, kHeight - 1};
   memset(controllerBlack, 0xa5, sizeof(controllerBlack));
@@ -102,5 +136,5 @@ int main() {
       assert(fast.netAt(b) == 0);
     }
   }
-  puts("PASS: randomized equivalence, asymmetric budgets, stale RAM, 500 scans with static black/white UI untouched");
+  puts("PASS: randomized equivalence, uncommitted replans, both-mode maintenance, asymmetric budgets, stale RAM, 500 static-UI scans");
 }

@@ -13,10 +13,19 @@ extern const uint8_t appleEnd[] asm("_binary_assets_badapple_bin_end");
 
 namespace {
 Panel panel;
-Planner planner;
+Planner plannerStorage[2];
+Planner* currentPlanner = &plannerStorage[0];
+Planner* shadowPlanner = &plannerStorage[1];
+Planner& planner() { return *currentPlanner; }
+bool pipelineEnabled = false, pipelinePrepared = false, pipelineReady = false;
+bool pipelineDriven = false, pipelineMaintenance = false;
+uint32_t pipelineCommitUs = 0, pipelinePlanUs = 0;
 AppleVideo apple;
 uint32_t appleLimitMs = 0;
 bool appleReady = false;
+bool appleLoop = false;
+bool irqWait = false;
+uint32_t videoFrame = 0, pendingVideoFrame = 0, presentedVideoFrame = UINT32_MAX;
 GFXcanvas1 canvas(kWidth, kHeight);
 uint8_t frame[kFrameBytes];
 uint8_t pendingFrame[kFrameBytes];
@@ -34,11 +43,14 @@ int64_t epochUs = 0, nextUs = 0;
 int64_t lastCleanUs = 0, lastSettleUs = 0;
 uint32_t lastBusyUs = 20000;
 int64_t diagnosticOffUs = 0;
-constexpr uint32_t kFullGuardMs = 3000; // Isolate full->fast transition during diagnosis.
+uint32_t fullGuardMs = 3000; // Diagnostic guard; configurable after a full-refresh stop.
 char input[64];
 size_t inputLength = 0;
 struct {
   uint32_t scans = 0, plans = 0, overruns = 0;
+  uint32_t contentFrames = 0, skippedFrames = 0;
+  uint32_t pipelineStages = 0, pipelineUses = 0;
+  uint64_t pipelineCopyUs = 0;
   uint64_t planUs = 0, uploadUs = 0, busyUs = 0, renderUs = 0, commitUs = 0;
   int64_t sinceUs = 0;
 } stats;
@@ -56,6 +68,7 @@ const char* patternName() {
 }
 
 void fault() {
+  pipelinePrepared = pipelineReady = false;
   running = false;
   faulted = true;
   // Do not pretend the software's charge model is still synchronized.
@@ -63,7 +76,7 @@ void fault() {
 }
 
 void help() {
-  Serial.println("fast29 v6 / SSD1680 T94 / XIAO ESP32-C6 / 296x128 landscape");
+  Serial.println("fast29 v7 / SSD1680 T94 / XIAO ESP32-C6 / 296x128 landscape");
   Serial.println("budget | net : full clean, reset model, run selected strategy");
   Serial.println("blocks | line | reverse | clock : change test after full clean");
   Serial.println("fps N : 1..60; fps 0 : uncapped (scan rate, NOT optical settling)");
@@ -72,24 +85,38 @@ void help() {
   Serial.println("speed N : 1..120 pixels/sec; default 24");
   Serial.println("end fast | end normal : compare LUT ending 0x02 / 0x22 after clean");
   Serial.println("window full | window partial : compare full vs cropped RAM writes after clean");
-  Serial.println("prepare : full refresh, wait 3s, enable fast power without scanning; auto-off after 8s");
+  Serial.println("prepare : full refresh, configured guard, enable fast power without scanning; auto-off after 8s");
   Serial.println("hold N : 1..200 zero-mask scans after prepare, then analog off; no full refresh");
   Serial.println("settle : freeze target, finish its drive budgets, HOLD, power off");
   Serial.println("clean : full clean and continue; stop : full clean and power off");
   Serial.println("status | help");
   Serial.println("apple : play complete silent Bad Apple; apple N : first N seconds; stop/settle also work");
+  Serial.println("apple loop [N] : repeat the complete video or its first N seconds until stop/settle");
+  Serial.println("fr N : waveform frequency selector 0..7; full clean and stop before applying");
+  Serial.println("scan full | scan FIRST LAST : gate scan rows, 16..296 lines; stops first");
+  Serial.println("reuse on | reuse off : reuse identical controller masks; stops first");
+  Serial.println("wait irq | wait poll : BUSY falling-edge wakeup or 1ms polling");
+  Serial.println("verify N : decode video frame N while idle and report its FNV-1a checksum");
+  Serial.println("guard N : diagnostic delay after full refresh, 0..3000ms; stops first");
+  Serial.println("pipeline on | pipeline off : predict next scan while BUSY; stops first, default off");
+  Serial.println("paired on | paired off : follow each drive with one HOLD phase; stops first");
+  Serial.println("history off | history 100|150|200 : experimental return-dose estimate; stops first");
+  Serial.println("weak N | weak off : experimental black tail, 1..4 strong doses replaced by twice as many weak scans");
+  Serial.println("weakprobe N [weak|sameA|sameB] : 1..11 pulses on HOLD/A/test/B patches, then power off");
 }
 
 void status() {
   Serial.printf("mode=%s pattern=%s running=%d fault=%d target_fps=%u spi_mhz=%lu "
-                "scans_since_clean=%lu free_heap=%lu planner_bytes=%u "
-                "end=0x%02x pulses=%u/%u speed=%u frozen=%d window=%s analog=%d guard_ms=%lu fast_hw_reset=1 version=6\n",
+                "end=0x%02x pulses=%u/%u window=%s analog=%d guard_ms=%lu video_loop=%d "
+                "fr=%u gate_first=%u gate_last=%u reuse=%d wait=%s video_ready=%d content_fps=%u "
+                "pipeline=%d paired=%d history=%u weak_tail=%u version=7\n",
                 modeName(), patternName(), running, faulted, targetFps,
-                (unsigned long)(panel.clock() / 1000000), (unsigned long)scans,
-                (unsigned long)ESP.getFreeHeap(), unsigned(sizeof(planner)),
-                panel.endOption(), blackPulses, whitePulses, speed, frozen,
+                (unsigned long)(panel.clock() / 1000000), panel.endOption(), blackPulses, whitePulses,
                 panel.partialUpload() ? "partial" : "full", panel.analogOn(),
-                (unsigned long)kFullGuardMs);
+                (unsigned long)fullGuardMs, appleLoop, panel.frameRate(), panel.scanFirst(), panel.scanLast(),
+                panel.reuseMasks(), irqWait ? "irq" : "poll", appleReady, apple.fps(),
+                pipelineEnabled, panel.pairedHold(), planner().reversalPercent(), planner().weakTail());
+  Serial.flush();
 }
 
 void render(int64_t now) {
@@ -97,10 +124,18 @@ void render(int64_t now) {
   const uint32_t elapsedMs = (now - epochUs) / 1000;
   if (pattern == Pattern::Apple) {
     if (elapsedMs >= appleLimitMs) {
+      videoFrame = std::min<uint32_t>(apple.count() - 1,
+          uint64_t(appleLimitMs - 1) * apple.fps() / 1000);
+      if (!apple.frame(videoFrame, frame)) {
+        Serial.println("FAULT final video frame decode"); faulted = true; running = false; return;
+      }
       frozen = true; framePrepared = true;
       Serial.println("APPLE end; settling last target");
-    } else if (!apple.frame(uint64_t(elapsedMs) * apple.fps() / 1000, frame)) {
-      Serial.println("FAULT video frame decode"); faulted = true; running = false;
+    } else {
+      videoFrame = uint64_t(elapsedMs) * apple.fps() / 1000;
+      if (!apple.frame(videoFrame, frame)) {
+        Serial.println("FAULT video frame decode"); faulted = true; running = false;
+      }
     }
     stats.renderUs += esp_timer_get_time() - begin;
     return;
@@ -152,14 +187,51 @@ void resetStats() {
   stats.sinceUs = esp_timer_get_time();
 }
 
+void acceptVideoFrame(uint32_t index) {
+  if (pattern != Pattern::Apple || presentedVideoFrame == index) return;
+  if (presentedVideoFrame != UINT32_MAX && index > presentedVideoFrame + 1)
+    stats.skippedFrames += index - presentedVideoFrame - 1;
+  ++stats.contentFrames;
+  presentedVideoFrame = index;
+}
+
+// Work only on a copy until the panel confirms the in-flight scan. Preview
+// writes masks but leaves next-frame budgets untouched, so cancellation is safe.
+void preparePipeline(int64_t predicted) {
+  if (!pipelineEnabled || pipelinePrepared || pipelineReady) return;
+  const int64_t copyStart = esp_timer_get_time();
+  *shadowPlanner = planner();
+  stats.pipelineCopyUs += esp_timer_get_time() - copyStart;
+  ++stats.pipelineStages;
+  const int64_t commitStart = esp_timer_get_time();
+  if (pendingDriven) shadowPlanner->commit(pendingFrame, pendingMaintenance);
+  else if (!pendingMaintenance) shadowPlanner->accept(pendingFrame);
+  pipelineCommitUs = esp_timer_get_time() - commitStart;
+  pipelineMaintenance = !frozen && mode == DriveMode::Budget &&
+                        predicted - lastSettleUs >= 20000000;
+  const int64_t planStart = esp_timer_get_time();
+  pipelineDriven = shadowPlanner->preview(frame, pipelineMaintenance);
+  pipelinePlanUs = esp_timer_get_time() - planStart;
+  pipelinePrepared = true;
+}
+
 bool finishPending() {
   if (!pending) return true;
   ScanTiming timing;
   if (!panel.finishScan(timing)) { fault(); return false; }
   const int64_t begin = esp_timer_get_time();
-  if (pendingDriven) planner.commit(pendingFrame, pendingMaintenance);
-  else if (!pendingMaintenance) planner.accept(pendingFrame);
-  stats.commitUs += esp_timer_get_time() - begin;
+  if (pipelinePrepared) {
+    // The shadow's physical history contains exactly this successful scan.
+    std::swap(currentPlanner, shadowPlanner);
+    pipelinePrepared = false;
+    pipelineReady = true;
+    stats.commitUs += pipelineCommitUs;
+  } else {
+    if (pendingDriven) planner().commit(pendingFrame, pendingMaintenance);
+    else if (!pendingMaintenance) planner().accept(pendingFrame);
+    stats.commitUs += esp_timer_get_time() - begin;
+  }
+  if (!pendingMaintenance) acceptVideoFrame(pendingVideoFrame);
   ++scans; ++stats.scans;
   stats.uploadUs += timing.uploadUs; stats.busyUs += timing.busyUs;
   lastBusyUs = timing.busyUs;
@@ -169,17 +241,24 @@ bool finishPending() {
 }
 
 bool clean(bool resume) {
+  pipelinePrepared = pipelineReady = false;
   running = false;
   diagnosticOffUs = 0;
   if (!finishPending()) return false;
   const int64_t start = esp_timer_get_time();
   if (!panel.full(frame)) { fault(); return false; }
   if (resume) {
-    Serial.printf("PHASE full_busy_finished; guard_ms=%lu; fast_not_loaded\n", (unsigned long)kFullGuardMs);
-    delay(kFullGuardMs);
+    Serial.printf("PHASE full_busy_finished; guard_ms=%lu; fast_not_loaded\n", (unsigned long)fullGuardMs);
+    delay(fullGuardMs);
   }
-  planner.reset(mode, frame);
-  planner.setPulses(blackPulses, whitePulses);
+  if (!planner().setPulses(blackPulses, whitePulses)) {
+    faulted = true;
+    Serial.println("FAULT planner pulse configuration rejected; board stopped");
+    return false;
+  }
+  planner().reset(mode, frame);
+  panel.setWeakState(planner().weakTail() != 0);
+  panel.setWeakSource(3);
   scans = 0; holdPending = false;
   framePrepared = false;
   if (resume && !panel.prepareFast()) { fault(); return false; }
@@ -194,9 +273,13 @@ bool clean(bool resume) {
 }
 
 void start(DriveMode selected) {
+  if (selected == DriveMode::Net && planner().weakTail()) {
+    Serial.println("Disable weak tail before selecting net mode."); return;
+  }
   mode = selected;
   if (!finishPending()) return;
   frozen = false;
+  presentedVideoFrame = UINT32_MAX;
   epochUs = esp_timer_get_time();
   render(epochUs);
   if (faulted) return;
@@ -205,37 +288,111 @@ void start(DriveMode selected) {
   status();
 }
 
+void weakProbe(unsigned pulses, uint8_t source) {
+  appleLoop = false;
+  running = false;
+  if (!finishPending()) return;
+  const bool paired = panel.pairedHold();
+  const bool weakState = panel.weakState();
+  const uint8_t weakSource = panel.weakSource();
+  canvas.fillScreen(0);
+  canvas.setTextColor(1);
+  canvas.setTextSize(1);
+  canvas.setCursor(18, 8); canvas.print("Source-state probe");
+  const char* labels[] = {"HOLD", "A", source == 1 ? "sameA" : source == 2 ? "sameB" : "weak", "B"};
+  for (unsigned col = 0; col < 4; ++col) {
+    canvas.setCursor(42 + col * 60, 28); canvas.print(labels[col]);
+  }
+  canvas.fillRect(30, 78, 242, 32, 1);
+  for (unsigned col = 0; col < 4; ++col) {
+    canvas.drawRect(38 + col * 60, 44, 36, 28, 1);
+    canvas.drawRect(38 + col * 60, 80, 36, 28, 0);
+  }
+  for (size_t i = 0; i < kFrameBytes; ++i) frame[i] = ~canvas.getBuffer()[i];
+  panel.setScanRows(0, kHeight - 1);
+  if (!clean(false)) return;
+  panel.setPairedHold(false);
+  panel.setWeakState(true);
+  panel.setWeakSource(source);
+  if (!panel.prepareFast()) { fault(); return; }
+  // Wire-state order is (0x26,0x24): 00,10,11,01. The probe bypasses the
+  // pulse model; every later animation starts with a full refresh and reset.
+  canvas.fillScreen(0);
+  for (unsigned row : {46u, 82u}) {
+    canvas.fillRect(100, row, 32, 24, 1);
+    canvas.fillRect(160, row, 32, 24, 1);
+  }
+  memcpy(planner().black, canvas.getBuffer(), kFrameBytes);
+  canvas.fillScreen(0);
+  for (unsigned row : {46u, 82u}) {
+    canvas.fillRect(160, row, 32, 24, 1);
+    canvas.fillRect(220, row, 32, 24, 1);
+  }
+  memcpy(planner().white, canvas.getBuffer(), kFrameBytes);
+  uint64_t busyUs = 0;
+  for (unsigned n = 0; n < pulses; ++n) {
+    ScanTiming timing;
+    if (!panel.scan(planner().black, planner().white, timing)) { fault(); return; }
+    busyUs += timing.busyUs;
+  }
+  memset(planner().black, 0, kFrameBytes);
+  memset(planner().white, 0, kFrameBytes);
+  ScanTiming ending;
+  if (!panel.scan(planner().black, planner().white, ending) || !panel.powerOff()) { fault(); return; }
+  panel.setWeakState(weakState);
+  panel.setWeakSource(weakSource);
+  panel.setPairedHold(paired);
+  holdPending = framePrepared = false;
+  Serial.printf("WEAKPROBE pulses=%u source=%u busy_us=%lu states=00,10,11,01 voltage_registers=unchanged analog_off=1\n",
+                pulses, source, (unsigned long)(busyUs / pulses));
+  status();
+}
+
 void command(char* text) {
   if (!strcmp(text, "help")) { help(); return; }
   if (!strcmp(text, "status")) { status(); return; }
   if (faulted) { Serial.println("FAULT latched; reset required."); return; }
+  // Any changing command may invalidate the pre-rendered target or its timing.
+  pipelinePrepared = pipelineReady = false;
+  if (!strcmp(text, "pipeline on") || !strcmp(text, "pipeline off")) {
+    if (!clean(false)) return;
+    pipelineEnabled = !strcmp(text, "pipeline on"); status(); return;
+  }
+  if (!strcmp(text, "paired on") || !strcmp(text, "paired off")) {
+    if (!clean(false)) return;
+    panel.setPairedHold(!strcmp(text, "paired on")); status(); return;
+  }
   if (!strcmp(text, "budget")) { start(DriveMode::Budget); return; }
   if (!strcmp(text, "net")) { start(DriveMode::Net); return; }
   if (!strcmp(text, "apple") || !strncmp(text, "apple ", 6)) {
     if (!appleReady) { Serial.println("Video unavailable; build xiao_esp32c6_video with a valid asset. Playback refused."); return; }
     unsigned seconds = 0;
     char extra;
-    if (strcmp(text, "apple") &&
-        (sscanf(text, "apple %u %c", &seconds, &extra) != 1 || seconds < 1 || seconds > 233)) {
-      Serial.println("Use apple or apple N (1..233 seconds)."); return;
+    const bool repeat = !strcmp(text, "apple loop") || !strncmp(text, "apple loop ", 11);
+    const char* secondsText = text + (repeat ? 10 : 5);
+    if (*secondsText &&
+        (sscanf(secondsText, " %u %c", &seconds, &extra) != 1 || seconds < 1 || seconds > 233)) {
+      Serial.println("Use apple [N] or apple loop [N] (1..233 seconds)."); return;
     }
+    appleLoop = repeat;
     appleLimitMs = seconds ? std::min<uint32_t>(seconds * 1000u, apple.durationMs()) : apple.durationMs();
     pattern = Pattern::Apple; targetFps = 0;
     Serial.printf("APPLE content_fps=%u duration_ms=%lu audio=off\n", apple.fps(), (unsigned long)appleLimitMs);
     start(DriveMode::Budget); return;
   }
-  if (!strcmp(text, "stop")) { clean(false); return; }
+  if (!strcmp(text, "stop")) { appleLoop = false; clean(false); return; }
   if (!strcmp(text, "clean")) { clean(running); return; }
   if (!strcmp(text, "prepare")) {
     if (!clean(false)) return;
-    Serial.println("PHASE full_finished; waiting_3000ms; no_fast_LUT");
-    delay(kFullGuardMs);
+    Serial.printf("PHASE full_finished; guard_ms=%lu; no_fast_LUT\n", (unsigned long)fullGuardMs);
+    delay(fullGuardMs);
     if (!panel.prepareFast()) { fault(); return; }
     diagnosticOffUs = esp_timer_get_time() + 8000000;
     Serial.println("PHASE fast_prepared; pixel_scans=0; auto_off_in_8s");
     status(); return;
   }
   if (!strcmp(text, "settle")) {
+    appleLoop = false;
     if (!running) { Serial.println("Already idle; no unfinished drive."); return; }
     if (!finishPending()) return;
     frozen = true; framePrepared = true;
@@ -262,28 +419,125 @@ void command(char* text) {
   else if (!strcmp(text, "reverse")) pattern = Pattern::Reverse;
   else if (!strcmp(text, "clock")) pattern = Pattern::Clock;
   else newPattern = false;
-  if (newPattern) { start(mode); return; }
+  if (newPattern) {
+    appleLoop = false;
+    panel.setScanRows(0, kHeight - 1);
+    start(mode); return;
+  }
   unsigned value;
   unsigned other;
   char extra;
+  if (!strcmp(text, "weak off") ||
+      (sscanf(text, "weak %u %c", &value, &extra) == 1 && value >= 1 && value <= 4)) {
+    if (!strcmp(text, "weak off")) value = 0;
+    if (value && (mode == DriveMode::Net || planner().reversalPercent())) {
+      Serial.println("Weak tail requires budget mode and history off."); return;
+    }
+    if (!clean(false)) return;
+    if (!planner().setWeakTail(value)) {
+      Serial.println("Weak tail configuration rejected."); return;
+    }
+    planner().reset(mode, frame);
+    panel.setWeakState(value != 0);
+    panel.setWeakSource(3);
+    status(); return;
+  }
+  if (!strcmp(text, "history off") ||
+      (sscanf(text, "history %u %c", &value, &extra) == 1 &&
+       (value == 100 || value == 150 || value == 200))) {
+    if (!strcmp(text, "history off")) value = 0;
+    if (value && planner().weakTail()) {
+      Serial.println("Disable weak tail before selecting history mode."); return;
+    }
+    if (value && !Planner::supportsHistory(blackPulses, whitePulses)) {
+      Serial.println("History requires lcm(black pulses, white pulses) <= 255."); return;
+    }
+    if (!clean(false)) return;
+    if (!planner().setReversalPercent(value)) {
+      Serial.println("History configuration rejected."); return;
+    }
+    planner().reset(mode, frame);
+    status(); return;
+  }
+  char probeMode[8] = {};
+  const int probeArgs = sscanf(text, "weakprobe %u %7s %c", &value, probeMode, &extra);
+  if ((probeArgs == 1 || probeArgs == 2) && value >= 1 && value <= 11) {
+    uint8_t source = 3;
+    if (probeArgs == 2 && !strcmp(probeMode, "sameA")) source = 1;
+    else if (probeArgs == 2 && !strcmp(probeMode, "sameB")) source = 2;
+    else if (probeArgs == 2 && strcmp(probeMode, "weak")) {
+      Serial.println("Use weakprobe N [weak|sameA|sameB]."); return;
+    }
+    weakProbe(value, source); return;
+  }
+  if (sscanf(text, "guard %u %c", &value, &extra) == 1 && value <= 3000) {
+    if (!clean(false)) return;
+    fullGuardMs = value; status(); return;
+  }
+  if (sscanf(text, "verify %u %c", &value, &extra) == 1) {
+    if (running || pending || !appleReady || value >= apple.count()) {
+      Serial.println("Verification requires an idle board and a valid video frame."); return;
+    }
+    const int64_t begin = esp_timer_get_time();
+    if (!apple.frame(value, pendingFrame)) {
+      Serial.println("FAULT video verification decode"); faulted = true; return;
+    }
+    const int64_t decoded = esp_timer_get_time();
+    uint32_t hash = 2166136261u;
+    for (uint8_t byte : pendingFrame) hash = (hash ^ byte) * 16777619u;
+    Serial.printf("VERIFY frame=%u hash=%lu decode_us=%lu\n", value, (unsigned long)hash,
+                  (unsigned long)(decoded - begin));
+    status(); return;
+  }
+  if (sscanf(text, "fr %u %c", &value, &extra) == 1 && value <= 7) {
+    if (!clean(false)) return;
+    panel.setFrameRate(value); status(); return;
+  }
+  if (!strcmp(text, "scan full")) {
+    if (!clean(false)) return;
+    panel.setScanRows(0, kHeight - 1); status(); return;
+  }
+  if (sscanf(text, "scan %u %u %c", &value, &other, &extra) == 2 &&
+      value < kHeight && other < kHeight && other >= value + 15) {
+    if (!clean(false)) return;
+    panel.setScanRows(value, other); status(); return;
+  }
+  if (!strcmp(text, "reuse on") || !strcmp(text, "reuse off")) {
+    if (!clean(false)) return;
+    panel.setReuseMasks(!strcmp(text, "reuse on")); status(); return;
+  }
+  if (!strcmp(text, "wait irq") || !strcmp(text, "wait poll")) {
+    irqWait = !strcmp(text, "wait irq"); status(); return;
+  }
   if (sscanf(text, "hold %u %c", &value, &extra) == 1 && value >= 1 && value <= 200) {
     if (running || !diagnosticOffUs || !panel.analogOn()) {
       Serial.println("Send prepare first; hold is only allowed in the idle diagnostic session."); return;
     }
     diagnosticOffUs = 0;
-    memset(planner.black, 0, kFrameBytes); memset(planner.white, 0, kFrameBytes);
+    memset(planner().black, 0, kFrameBytes); memset(planner().white, 0, kFrameBytes);
     Serial.printf("PHASE zero_masks; scans=%u; all_pixels_HOLD\n", value);
+    uint64_t busyTotal = 0, uploadTotal = 0;
+    uint32_t busyMin = UINT32_MAX, busyMax = 0;
     for (unsigned i = 0; i < value; ++i) {
       ScanTiming timing;
-      if (!panel.scan(planner.black, planner.white, timing)) { fault(); return; }
+      if (!panel.scan(planner().black, planner().white, timing)) { fault(); return; }
+      busyTotal += timing.busyUs; uploadTotal += timing.uploadUs;
+      busyMin = std::min(busyMin, timing.busyUs); busyMax = std::max(busyMax, timing.busyUs);
       ++scans;
     }
+    Serial.printf("PROBE fr=%u gate_first=%u gate_last=%u scans=%u busy_us=%lu min_us=%lu max_us=%lu upload_us=%lu\n",
+                  panel.frameRate(), panel.scanFirst(), panel.scanLast(), value,
+                  (unsigned long)(busyTotal / value), (unsigned long)busyMin, (unsigned long)busyMax,
+                  (unsigned long)(uploadTotal / value));
     if (!panel.powerOff()) { fault(); return; }
     Serial.println("PHASE zero_masks_done; analog_off; image_retained; no_full_refresh");
     status(); return;
   }
   if (sscanf(text, "pulse %u %u %c", &value, &other, &extra) == 2 &&
       value >= 1 && value <= 32 && other >= 1 && other <= 32) {
+    if (planner().reversalPercent() && !Planner::supportsHistory(value, other)) {
+      Serial.println("History requires lcm(black pulses, white pulses) <= 255."); return;
+    }
     const bool resume = running;
     if (!finishPending()) return;
     blackPulses = value; whitePulses = other;
@@ -323,7 +577,8 @@ void reportStats(int64_t now) {
   if (elapsed < 2000000) return;
   Serial.printf("MEASURE mode=%s pattern=%s scan_hz=%.2f plan_us=%lu "
                 "upload_us=%lu busy_us=%lu render_us=%lu commit_us=%lu "
-                "overruns=%lu scans=%lu heap=%lu\n",
+                "overruns=%lu scans=%lu heap=%lu content_hz=%.2f skipped=%lu "
+                "pipeline_used=%lu pipeline_staged=%lu pipeline_copy_us=%lu\n",
                 modeName(), patternName(), stats.scans * 1000000.0 / elapsed,
                 (unsigned long)(stats.plans ? stats.planUs / stats.plans : 0),
                 (unsigned long)(stats.scans ? stats.uploadUs / stats.scans : 0),
@@ -331,7 +586,10 @@ void reportStats(int64_t now) {
                 (unsigned long)(stats.plans ? stats.renderUs / stats.plans : 0),
                 (unsigned long)(stats.scans ? stats.commitUs / stats.scans : 0),
                 (unsigned long)stats.overruns, (unsigned long)scans,
-                (unsigned long)ESP.getFreeHeap());
+                (unsigned long)ESP.getFreeHeap(), stats.contentFrames * 1000000.0 / elapsed,
+                (unsigned long)stats.skippedFrames,
+                (unsigned long)stats.pipelineUses, (unsigned long)stats.pipelineStages,
+                (unsigned long)(stats.pipelineStages ? stats.pipelineCopyUs / stats.pipelineStages : 0));
   resetStats();
 }
 }  // namespace
@@ -373,7 +631,14 @@ void loop() {
       render(predicted); framePrepared = true;
       if (faulted) return;
     }
-    if (!panel.scanReady()) { delay(1); return; }
+    if (pipelineEnabled && !pipelinePrepared && !panel.scanReady()) {
+      preparePipeline(std::max(nextUs, esp_timer_get_time() + lastBusyUs));
+    }
+    if (!panel.scanReady()) {
+      if (irqWait) ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(2));
+      else delay(1);
+      return;
+    }
     if (!finishPending()) return;
     reportStats(esp_timer_get_time());
   }
@@ -385,16 +650,31 @@ void loop() {
   const bool maintenance = !frozen && mode == DriveMode::Budget && now - lastSettleUs >= 20000000;
   if (maintenance) lastSettleUs = now;
   const int64_t planStart = esp_timer_get_time();
-  const bool driven = planner.plan(frame, maintenance);
-  stats.planUs += esp_timer_get_time() - planStart;
+  bool driven;
+  if (pipelineReady && pipelineMaintenance == maintenance) {
+    planner().applyPreview(frame, maintenance);
+    driven = pipelineDriven;
+    stats.planUs += pipelinePlanUs + esp_timer_get_time() - planStart;
+    ++stats.pipelineUses;
+  } else {
+    driven = planner().plan(frame, maintenance);
+    stats.planUs += esp_timer_get_time() - planStart;
+  }
+  pipelineReady = false;
   ++stats.plans;
   if (driven || holdPending) {
     memcpy(pendingFrame, frame, kFrameBytes);
-    if (!panel.startScan(planner.black, planner.white)) { fault(); return; }
+    pendingVideoFrame = videoFrame;
+    if (!panel.startScan(planner().black, planner().white)) { fault(); return; }
     pending = true; pendingDriven = driven; pendingMaintenance = maintenance;
   } else {
-    if (!maintenance) planner.accept(frame);
+    if (!maintenance) { planner().accept(frame); acceptVideoFrame(videoFrame); }
     if (frozen) {
+      if (pattern == Pattern::Apple && appleLoop) {
+        Serial.println("APPLE loop; restarting after full refresh");
+        start(mode);
+        return;
+      }
       if (!panel.powerOff()) { fault(); return; }
       running = false;
       Serial.println("SETTLED running=0 analog_off=1 (no full refresh)");

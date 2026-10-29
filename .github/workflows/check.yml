@@ -8,13 +8,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Planner tests
+      - name: Desktop tests
         run: |
           mkdir -p build
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tests/planner_test.cpp -o build/planner_test
           ./build/planner_test
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tests/planner_equivalence.cpp -o build/planner_equivalence
           ./build/planner_equivalence
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tests/planner_preview_test.cpp -o build/planner_preview_test
+          ./build/planner_preview_test
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tests/planner_history_test.cpp -o build/planner_history_test
+          ./build/planner_history_test
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tests/planner_weak_tail_test.cpp -o build/planner_weak_tail_test
+          ./build/planner_weak_tail_test
+          python tests/make_video_fixture.py
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tests/apple_test.cpp lib/miniz/miniz_tinfl.c -o build/apple_test
+          ./build/apple_test build/fixtures/ba29.bin build/fixtures/ba29.hashes
+          ./build/apple_test build/fixtures/baz9.bin build/fixtures/baz9.hashes
+          python -m unittest discover -s tests -p 'test_*.py'
       - name: Python syntax
         run: python -m compileall -q tools
       - name: Install PlatformIO

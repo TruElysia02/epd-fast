@@ -3,24 +3,33 @@
 #include <cstddef>
 #include <cstring>
 #include "planner.h"
+#if defined(ESP_PLATFORM)
+#include <miniz.h>  // ESP32-C6 ROM inflater; keep its working state off the task stack.
+#else
+#include "../lib/miniz/miniz_tinfl.h"
+#endif
 
-// Independent byte-RLE decoder. Keyframes are absolute; other frames XOR the
-// prior bitmap. Seeking decodes at most one second, never the entire video.
+// BA29 uses byte RLE; BAZ9 uses one checked zlib stream per native XOR bitmap.
+// Keyframes are absolute. Seeking decodes at most one second of content.
 class AppleVideo {
  public:
   bool begin(const uint8_t* data, size_t size) {
+    ready_ = false;
+    decoded_ = -1;
+    if (!data || size < 20) return false;
     data_ = data; size_ = size;
-    if (size < 20 || memcmp(data, "BA29", 4) || u16(4) != kWidth || u16(6) != kHeight) return false;
+    deflate_ = !memcmp(data, "BAZ9", 4);
+    if ((!deflate_ && memcmp(data, "BA29", 4)) || u16(4) != kWidth || u16(6) != kHeight) return false;
     fps_ = u16(8); keyInterval_ = u16(10); count_ = u32(12);
-    if (!fps_ || fps_ > 30 || !keyInterval_ || keyInterval_ > 30 || !count_ || count_ > 100000) return false;
+    if (!fps_ || fps_ > 60 || !keyInterval_ || keyInterval_ > 60 || !count_ || count_ > 100000) return false;
     payload_ = 16 + size_t(count_ + 1) * 4;
     if (payload_ > size || u32(16) != 0 || u32(16 + size_t(count_) * 4) != size - payload_) return false;
-    decoded_ = -1;
+    ready_ = true;
     return true;
   }
 
   bool frame(uint32_t index, uint8_t* output) {
-    if (index >= count_) return false;
+    if (!ready_ || !output || index >= count_) return false;
     const uint32_t key = index / keyInterval_ * keyInterval_;
     uint32_t start = key;
     if (decoded_ >= int32_t(key) && decoded_ <= int32_t(index)) start = decoded_ + 1;
@@ -30,6 +39,19 @@ class AppleVideo {
       if (a > b || b > size_ - payload_) return false;
       const uint8_t* src = data_ + payload_ + a;
       const uint8_t* end = data_ + payload_ + b;
+      if (deflate_) {
+        size_t inputSize = b - a, outputSize = sizeof(delta_);
+        tinfl_init(&inflate_);
+        const auto result = tinfl_decompress(&inflate_, src, &inputSize, delta_, delta_, &outputSize,
+            TINFL_FLAG_PARSE_ZLIB_HEADER | TINFL_FLAG_USING_NON_WRAPPING_OUTPUT_BUF);
+        if (result != TINFL_STATUS_DONE || inputSize != b - a || outputSize != sizeof(delta_)) {
+          decoded_ = -1;
+          return false;
+        }
+        for (size_t j = 0; j < kFrameBytes; ++j) bitmap_[j] ^= delta_[j];
+        decoded_ = f;
+        continue;
+      }
       size_t out = 0;
       while (src < end) {
         const uint8_t control = *src++;
@@ -63,6 +85,9 @@ class AppleVideo {
   size_t size_ = 0, payload_ = 0;
   uint32_t count_ = 0;
   uint16_t fps_ = 0, keyInterval_ = 0;
+  bool ready_ = false, deflate_ = false;
   int32_t decoded_ = -1;
   uint8_t bitmap_[kFrameBytes]{};
+  uint8_t delta_[kFrameBytes]{};
+  tinfl_decompressor inflate_{};
 };

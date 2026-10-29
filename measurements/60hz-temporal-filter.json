@@ -1,0 +1,74 @@
+{
+  "filter": "confirm2",
+  "meaning": "Each pixel adopts a new state at the first of two consecutive matching input frames, otherwise retains the last emitted state; first/last frames are preserved. All60time samples/second remain. Single-frame details may be removed.",
+  "pack_command": [
+    "python",
+    "tools/pack_apple.py",
+    ".scratch/bad-apple/source-interpolated60.mkv",
+    ".scratch/bad-apple/filtered60.bin",
+    "--fps",
+    "60",
+    "--codec",
+    "deflate",
+    "--content-rows",
+    "63",
+    "233",
+    "--temporal-filter",
+    "confirm2"
+  ],
+  "original": {
+    "metadata": {
+      "format": "BAZ9",
+      "width": 128,
+      "height": 296,
+      "fps": 60,
+      "frames": 13920,
+      "key_interval": 60,
+      "duration_seconds": 232.0,
+      "bytes": 3474244,
+      "sha256": "13da727daf605e69b5aff97740152a3ed03a0bb670fd6ddfa9a0bbe39b49daad"
+    },
+    "statistics": {
+      "pixel_transition_events": 4663055,
+      "frames_with_any_transition": 12769,
+      "reversals_with_previous_transition_within_frames": {
+        "1": 276898,
+        "2": 573178,
+        "3": 807816,
+        "4": 1023517,
+        "7": 1425252
+      }
+    }
+  },
+  "filtered": {
+    "metadata": {
+      "format": "BAZ9",
+      "width": 128,
+      "height": 296,
+      "fps": 60,
+      "frames": 13920,
+      "key_interval": 60,
+      "duration_seconds": 232.0,
+      "bytes": 3260412,
+      "sha256": "e5bddd51ffdacc0d3732fb2c75a8acee5f2338908e7ae0a8a876e62602368b24"
+    },
+    "statistics": {
+      "pixel_transition_events": 4161197,
+      "frames_with_any_transition": 12767,
+      "reversals_with_previous_transition_within_frames": {
+        "1": 0,
+        "2": 258109,
+        "3": 457189,
+        "4": 650300,
+        "7": 1020094
+      }
+    }
+  },
+  "changed_pixel_time_samples": 250929,
+  "changed_pixel_time_fraction": 0.0004757841168889795,
+  "transition_reduction_fraction": 0.10762429351573166,
+  "short_reversal_reduction_le4_fraction": 0.36464172065534817,
+  "frames_outside_native_rows63_through233": 0,
+  "first_and_last_frames_unchanged": true,
+  "verification": "5 Python behavior tests passed; complete13920frame C++hash verification,200random seeks,bounds/corruption checks passed; desktop decode7.43us/frame; no device validation yet."
+}

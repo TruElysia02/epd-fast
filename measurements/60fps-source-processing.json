@@ -1,0 +1,53 @@
+{
+  "sample_start_seconds": 10,
+  "sample_seconds": 2,
+  "fps": 60,
+  "sample_frames": 120,
+  "changed_adjacent_pairs": 119,
+  "total_adjacent_pairs": 119,
+  "odd_frames_distinct_from_both_neighbors": 59,
+  "tested_odd_frames": 59,
+  "source": "local 29.97fps source scaled to 296x128 then FFmpeg motion compensated minterpolate mci/aobmc/bidir/vsbmc=1/scd=fdiff; not fps duplication",
+  "ffmpeg_command": [
+    "ffmpeg",
+    "-i",
+    "source.mp4",
+    "-an",
+    "-vf",
+    "scale=296:128:force_original_aspect_ratio=decrease,pad=296:128:(ow-iw)/2:(oh-ih)/2:black,format=yuv420p,minterpolate=fps=60:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1:scd=fdiff",
+    "-c:v",
+    "ffv1",
+    "source-interpolated60.mkv"
+  ],
+  "correction": "Explicit native-row black-bar restoration during packing: rows0..62 and234..295 zeroed (wire0=black), content rows63..233 untouched; removes 47-frame motion-interpolation overshoot into side bars.",
+  "pack_command": [
+    "python",
+    "tools/pack_apple.py",
+    "source-interpolated60.mkv",
+    "corrected60.bin",
+    "--fps",
+    "60",
+    "--codec",
+    "deflate",
+    "--content-rows",
+    "63",
+    "233"
+  ],
+  "verification": {
+    "format": "BAZ9",
+    "width": 128,
+    "height": 296,
+    "fps": 60,
+    "frames": 13920,
+    "key_interval": 60,
+    "white_pixel_native_rows": [
+      63,
+      233
+    ],
+    "all_white_pixels_within_rows_63_through_233": true,
+    "violations": [],
+    "all_black_frames": 229,
+    "bytes": 3474244,
+    "sha256": "13da727daf605e69b5aff97740152a3ed03a0bb670fd6ddfa9a0bbe39b49daad"
+  }
+}
