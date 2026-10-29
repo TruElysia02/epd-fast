@@ -42,7 +42,19 @@ int main(int argc, char** argv) {
   assert(!video.begin(data.data(), 16));
   assert(!video.frame(0, output));
   assert(!video.begin(nullptr, data.size()));
-  auto invalid = data; invalid[8] = 61;
+  // Frame-rate metadata is independent of the existing byte-RLE/zlib format.
+  // The same keyframe payload must remain readable at both old and new rates.
+  for (unsigned fps : {20u, 60u, 120u}) {
+    auto rate = data; rate[8] = fps; rate[9] = 0;
+    assert(video.begin(rate.data(), rate.size()));
+    assert(video.fps() == fps);
+    assert(video.durationMs() == video.count() * 1000 / fps);
+    for (uint32_t index : {0u, 59u, 60u, 119u})
+      if (index < video.count()) check(index);
+  }
+  auto invalid = data; invalid[8] = 0; invalid[9] = 0;
+  assert(!video.begin(invalid.data(), invalid.size()));
+  invalid = data; invalid[8] = 121; invalid[9] = 0;
   assert(!video.begin(invalid.data(), invalid.size()));
   invalid = data; invalid[10] = 61;
   assert(!video.begin(invalid.data(), invalid.size()));

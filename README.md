@@ -8,6 +8,10 @@
 
 默认参数仍为目标 30Hz、波形频率档位 2、全屏 RAM 上传、不复用掩码、轮询等待，并保留 3 秒诊断等待；高扫描率配置通过串口显式开启。上电不会自动播放视频或进入循环。
 
+后续已支持并实测 120FPS 输入：同一 12 秒运动片段在 FR7 接受 1335/1440 个源索引，约 111.25 个/源秒，未稳定达到 120；用户未观察到明显流畅度收益，残影加重。同片 60FPS 对照全部接收，扫描窗口峰值达到 134.37Hz。[120FPS 试验](docs/120fps-experiment.md)
+
+再比较30/45FPS后，用户选择45FPS作为流畅度与画质的折中；将单次驱动从约8ms延长到10ms、13.4ms均未显示明确收益，最后恢复FR5、11/11与流水线。残影仍存在，内容帧率下降没有自动解决它。
+
 思路参考 [SmoothEPD](https://github.com/PinkiePie1/SmoothEPD) 和 [InkBoy](https://github.com/kuslota/InkBoy)，这里的规划器和 ESP32-C6 传输实现独立编写。波形表改自 Waveshare，并保留其授权声明。代码来源见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## 硬件与接线
@@ -56,6 +60,7 @@ pio device monitor --port COM7
 | `scan full` / `scan 63 233` | 全部 gate 行 / 指定实际 gate 扫描范围；与上传窗口不同 |
 | `guard 0` / `guard 3000` | 全刷后额外诊断等待，单位 ms；不会省略硬件复位 |
 | `verify N` | 仅在停机时解码视频第 N 帧，输出校验值与解码耗时 |
+| `decodebench N` | 停机且升压关闭时顺序解码 1…1000 帧，测解码吞吐，不驱动面板 |
 | `settle` | 完成当前目标的剩余预算，关闭升压并保留画面 |
 | `stop` | 标准全刷并关闭升压 |
 | `status` / `help` | 状态与完整命令表 |

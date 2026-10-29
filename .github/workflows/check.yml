@@ -25,6 +25,8 @@ jobs:
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tests/apple_test.cpp lib/miniz/miniz_tinfl.c -o build/apple_test
           ./build/apple_test build/fixtures/ba29.bin build/fixtures/ba29.hashes
           ./build/apple_test build/fixtures/baz9.bin build/fixtures/baz9.hashes
+          ./build/apple_test build/fixtures/ba29_120.bin build/fixtures/ba29_120.hashes
+          ./build/apple_test build/fixtures/baz9_120.bin build/fixtures/baz9_120.hashes
           python -m unittest discover -s tests -p 'test_*.py'
       - name: Python syntax
         run: python -m compileall -q tools

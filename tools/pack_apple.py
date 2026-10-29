@@ -1,5 +1,6 @@
 """Convert video to native 128x296, 1-bit XOR frames (RLE or zlib)."""
 import argparse
+import math
 from pathlib import Path
 import struct
 import subprocess
@@ -78,6 +79,8 @@ def native_frames(stream, content_rows):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('input'); p.add_argument('output'); p.add_argument('--fps', type=int, default=20)
+    p.add_argument('--start', type=float, default=0, help='Start time in the source video, in seconds')
+    p.add_argument('--duration', type=float, help='Duration to encode, in seconds; omit for the remaining video')
     p.add_argument('--codec', choices=['rle', 'deflate'], default='rle')
     p.add_argument('--interpolate', action='store_true',
                    help='Motion-compensated interpolation after scaling, rather than frame duplication')
@@ -86,7 +89,10 @@ def main():
     p.add_argument('--temporal-filter', choices=['none', 'confirm2'], default='none',
                    help='Offline two-frame pixel confirmation; keeps FPS and removes single-frame flashes')
     a = p.parse_args()
-    if not 1 <= a.fps <= 60: p.error('fps must be 1..60')
+    if not 1 <= a.fps <= 120: p.error('fps must be 1..120')
+    if not math.isfinite(a.start) or a.start < 0: p.error('start must be a finite nonnegative time')
+    if a.duration is not None and (not math.isfinite(a.duration) or a.duration <= 0):
+        p.error('duration must be a finite positive time')
     if a.content_rows is not None and not 0 <= a.content_rows[0] <= a.content_rows[1] < 296:
         p.error('content rows must satisfy 0 <= FIRST <= LAST < 296')
     scale = ('scale=296:128:force_original_aspect_ratio=decrease,'
@@ -97,11 +103,14 @@ def main():
                    'format=gray')
     else:
         filters = f'fps={a.fps},' + scale + ',format=gray'
-    command = ['ffmpeg', '-v', 'error', '-i', a.input, '-an', '-vf', filters,
-               '-f', 'rawvideo', '-pix_fmt', 'gray', 'pipe:1']
+    command = ['ffmpeg', '-v', 'error']
+    if a.start: command += ['-ss', str(a.start)]
+    command += ['-i', a.input]
+    if a.duration is not None: command += ['-t', str(a.duration)]
+    command += ['-an', '-vf', filters, '-f', 'rawvideo', '-pix_fmt', 'gray', 'pipe:1']
     process = subprocess.Popen(command, stdout=subprocess.PIPE)
     offsets = [0]; payload = bytearray(); frames = 0; previous = bytes(4736); hashes = []
-    key_interval = a.fps
+    key_interval = min(a.fps, 60)
     images = native_frames(process.stdout, a.content_rows)
     if a.temporal_filter == 'confirm2':
         images = confirm_two_frames(images)

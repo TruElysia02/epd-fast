@@ -10,7 +10,7 @@
 #endif
 
 // BA29 uses byte RLE; BAZ9 uses one checked zlib stream per native XOR bitmap.
-// Keyframes are absolute. Seeking decodes at most one second of content.
+// Keyframes are absolute. Seeking decodes at most 60 frames, independent of the content rate.
 class AppleVideo {
  public:
   bool begin(const uint8_t* data, size_t size) {
@@ -21,7 +21,7 @@ class AppleVideo {
     deflate_ = !memcmp(data, "BAZ9", 4);
     if ((!deflate_ && memcmp(data, "BA29", 4)) || u16(4) != kWidth || u16(6) != kHeight) return false;
     fps_ = u16(8); keyInterval_ = u16(10); count_ = u32(12);
-    if (!fps_ || fps_ > 60 || !keyInterval_ || keyInterval_ > 60 || !count_ || count_ > 100000) return false;
+    if (!fps_ || fps_ > 120 || !keyInterval_ || keyInterval_ > 60 || !count_ || count_ > 100000) return false;
     payload_ = 16 + size_t(count_ + 1) * 4;
     if (payload_ > size || u32(16) != 0 || u32(16 + size_t(count_) * 4) != size - payload_) return false;
     ready_ = true;

@@ -1,0 +1,139 @@
+{
+  "source": "original29.97fps mp4, seconds10..22, scaled296x128 then independently FFmpeg mci/aobmc/bidir/vsbmc=1 interpolation to60or120; temporal-filter none, native black bars clamped63..233; no repeated-frame fps conversion and no60-to120 cascading",
+  "motion60": {
+    "metadata": {
+      "path": ".scratch/120fps/motion60.bin",
+      "format": "BAZ9",
+      "width": 128,
+      "height": 296,
+      "fps": 60,
+      "frames": 720,
+      "key_interval": 60,
+      "duration_seconds": 12.0,
+      "bytes": 172121,
+      "sha256": "73bff3ca7a3fdc2c372faf9ac21be9fb0a40f03254485b37c8ba6cc016c950b9"
+    },
+    "statistics": {
+      "adjacent_pairs": 719,
+      "changed_adjacent_pairs": 692,
+      "mean_changed_pixels_per_adjacent_pair": 383.07649513212795,
+      "total_pixel_transitions": 275432,
+      "odd_frames_distinct_from_both_neighbors": 345,
+      "tested_odd_frames": 359,
+      "first120frames_changed_pairs": 118
+    }
+  },
+  "motion120": {
+    "metadata": {
+      "path": ".scratch/120fps/motion120.bin",
+      "format": "BAZ9",
+      "width": 128,
+      "height": 296,
+      "fps": 120,
+      "frames": 1440,
+      "key_interval": 60,
+      "duration_seconds": 12.0,
+      "bytes": 265647,
+      "sha256": "b057c6ba0a4df3da20186e730a782e5c2e30649a80e1b0279c2fd74fb2fe3a30"
+    },
+    "statistics": {
+      "adjacent_pairs": 1439,
+      "changed_adjacent_pairs": 1383,
+      "mean_changed_pixels_per_adjacent_pair": 199.589298123697,
+      "total_pixel_transitions": 287209,
+      "odd_frames_distinct_from_both_neighbors": 689,
+      "tested_odd_frames": 719,
+      "first120frames_changed_pairs": 118
+    },
+    "short_reversals": {
+      "pixel_transitions": 287209,
+      "reversal_within_one_content_frame": 11941
+    }
+  },
+  "same_time_60_vs_even120_exactly_matching_frames": 719,
+  "same_time_comparison_total_frames": 720,
+  "outside_content_rows_frames": 0,
+  "source_file_sha256": "d8339642fd3303a0c4971e1564515e82f69ef61b700ce17b681debb19404c23a",
+  "source_file_frame_rate": "30000/1001",
+  "source_seconds": [
+    10,
+    22
+  ],
+  "pack_base_options": [
+    "--start",
+    "10",
+    "--duration",
+    "12",
+    "--interpolate",
+    "--codec",
+    "deflate",
+    "--content-rows",
+    "63",
+    "233"
+  ],
+  "same_time_differences": [
+    {
+      "frame60": 0,
+      "frame120": 0,
+      "different_pixels": 14
+    }
+  ],
+  "motion120_confirm2": {
+    "metadata": {
+      "path": ".scratch/120fps/motion120-confirm2.bin",
+      "format": "BAZ9",
+      "width": 128,
+      "height": 296,
+      "fps": 120,
+      "frames": 1440,
+      "key_interval": 60,
+      "duration_seconds": 12.0,
+      "bytes": 254539,
+      "sha256": "ce05a9dfcf61cfcfe7d185e64d2832f6a043d351cd8be9aea0a246a21d4acf14"
+    },
+    "statistics": {
+      "pixel_transitions": 266303,
+      "reversal_within_one_content_frame": 0
+    },
+    "changed_pixel_time_samples": 10453,
+    "caution": "At120FPS confirm2 removes only8.333ms single-frame excursions; this is not the same physical-time filter strength as16.667ms at60FPS. Use none baselines for initial fair rate comparison."
+  },
+  "host_verification": {
+    "motion60": "all720hashes;200random seeks;bounds and corruption checks passed;desktop7.42us/frame",
+    "motion120": "all1440hashes;200random seeks;bounds and corruption checks passed;desktop6.92us/frame",
+    "motion120_confirm2": "all1440hashes;200random seeks;bounds and corruption checks passed;desktop7.07us/frame",
+    "baseline60": "all13920hashes;200random seeks;bounds and corruption checks passed;desktop7.35us/frame"
+  },
+  "motion30": {
+    "metadata": {
+      "path": ".scratch/120fps/motion30.bin",
+      "format": "BAZ9",
+      "width": 128,
+      "height": 296,
+      "fps": 30,
+      "frames": 360,
+      "key_interval": 30,
+      "duration_seconds": 12.0,
+      "bytes": 102306,
+      "sha256": "d849d09ae16b026b3b580b00faa97b21820d96abc77f4985a2e07d204a9a8da1"
+    },
+    "method": "same original10..22seconds, independent MCI30,deflate,none,contentrows63..233",
+    "host_verification": "all360frame hashes;200random seeks;bounds/corruption passed"
+  },
+  "motion45": {
+    "metadata": {
+      "path": ".scratch/120fps/motion45.bin",
+      "format": "BAZ9",
+      "width": 128,
+      "height": 296,
+      "fps": 45,
+      "frames": 540,
+      "key_interval": 45,
+      "duration_seconds": 12.0,
+      "bytes": 140031,
+      "sha256": "9dc8579aeb8d1a6d2ca1297290d0c1bc3d63503cdad01f1466ad94550d32abbe"
+    },
+    "method": "same original10..22seconds, independent MCI45,deflate,none,contentrows63..233",
+    "host_verification": "all540frame hashes;200random seeks;bounds/corruption passed"
+  }
+}

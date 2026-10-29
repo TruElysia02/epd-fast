@@ -1,4 +1,4 @@
-"""Create synthetic 60fps fixtures without downloading or distributing a video."""
+"""Create synthetic 60/120fps fixtures without downloading or distributing a video."""
 from pathlib import Path
 import struct
 import zlib
@@ -32,7 +32,8 @@ for magic in (b'BA29', b'BAZ9'):
                                for n in range(0, len(delta), 128))
         payload.extend(encoded)
         offsets.append(len(payload))
-    stem = root / magic.decode().lower()
-    stem.with_suffix('.bin').write_bytes(struct.pack('<4sHHHHI', magic, 128, 296, 60, 60, len(frames))
-                                        + struct.pack(f'<{len(offsets)}I', *offsets) + payload)
-    stem.with_suffix('.hashes').write_bytes(struct.pack(f'<{len(hashes)}I', *hashes))
+    for fps in (60, 120):
+        stem = root / (magic.decode().lower() + ('_120' if fps == 120 else ''))
+        stem.with_suffix('.bin').write_bytes(struct.pack('<4sHHHHI', magic, 128, 296, fps, 60, len(frames))
+                                            + struct.pack(f'<{len(offsets)}I', *offsets) + payload)
+        stem.with_suffix('.hashes').write_bytes(struct.pack(f'<{len(hashes)}I', *hashes))

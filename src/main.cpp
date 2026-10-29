@@ -54,6 +54,11 @@ struct {
   uint64_t planUs = 0, uploadUs = 0, busyUs = 0, renderUs = 0, commitUs = 0;
   int64_t sinceUs = 0;
 } stats;
+struct {
+  bool active = false, naturalEnd = false;
+  uint32_t sourceFrames = 0, acceptedIndices = 0, skippedIndices = 0, scans = 0;
+  int64_t wallStartUs = 0, cleanWallUs = 0;
+} appleResult;
 
 const char* modeName() { return mode == DriveMode::Budget ? "budget" : "net"; }
 const char* patternName() {
@@ -68,6 +73,7 @@ const char* patternName() {
 }
 
 void fault() {
+  appleResult.active = false;
   pipelinePrepared = pipelineReady = false;
   running = false;
   faulted = true;
@@ -79,7 +85,7 @@ void help() {
   Serial.println("fast29 v7 / SSD1680 T94 / XIAO ESP32-C6 / 296x128 landscape");
   Serial.println("budget | net : full clean, reset model, run selected strategy");
   Serial.println("blocks | line | reverse | clock : change test after full clean");
-  Serial.println("fps N : 1..60; fps 0 : uncapped (scan rate, NOT optical settling)");
+  Serial.println("fps N : 1..120 scans/s; fps 0 : uncapped (NOT optical settling)");
   Serial.println("spi N : 4, 10, 20 MHz; stops and returns to full reference");
   Serial.println("pulse B W : 1..32 black/white pulses, full clean before applying");
   Serial.println("speed N : 1..120 pixels/sec; default 24");
@@ -97,6 +103,7 @@ void help() {
   Serial.println("reuse on | reuse off : reuse identical controller masks; stops first");
   Serial.println("wait irq | wait poll : BUSY falling-edge wakeup or 1ms polling");
   Serial.println("verify N : decode video frame N while idle and report its FNV-1a checksum");
+  Serial.println("decodebench N : decode 1..1000 sequential frames while idle/analog off; no panel scans");
   Serial.println("guard N : diagnostic delay after full refresh, 0..3000ms; stops first");
   Serial.println("pipeline on | pipeline off : predict next scan while BUSY; stops first, default off");
   Serial.println("paired on | paired off : follow each drive with one HOLD phase; stops first");
@@ -129,10 +136,13 @@ void render(int64_t now) {
       if (!apple.frame(videoFrame, frame)) {
         Serial.println("FAULT final video frame decode"); faulted = true; running = false; return;
       }
+      appleResult.naturalEnd = true;
       frozen = true; framePrepared = true;
       Serial.println("APPLE end; settling last target");
     } else {
-      videoFrame = uint64_t(elapsedMs) * apple.fps() / 1000;
+      // A periodic clean pauses the clock after a predicted target was decoded.
+      // Keep that target rather than briefly going backwards after the pause.
+      videoFrame = std::max<uint32_t>(videoFrame, uint64_t(elapsedMs) * apple.fps() / 1000);
       if (!apple.frame(videoFrame, frame)) {
         Serial.println("FAULT video frame decode"); faulted = true; running = false;
       }
@@ -192,7 +202,24 @@ void acceptVideoFrame(uint32_t index) {
   if (presentedVideoFrame != UINT32_MAX && index > presentedVideoFrame + 1)
     stats.skippedFrames += index - presentedVideoFrame - 1;
   ++stats.contentFrames;
+  if (appleResult.active) {
+    if (presentedVideoFrame != UINT32_MAX && index > presentedVideoFrame + 1)
+      appleResult.skippedIndices += index - presentedVideoFrame - 1;
+    ++appleResult.acceptedIndices;
+  }
   presentedVideoFrame = index;
+}
+
+void reportAppleResult() {
+  if (!appleResult.active) return;
+  const int64_t activeUs = esp_timer_get_time() - appleResult.wallStartUs - appleResult.cleanWallUs;
+  Serial.printf("APPLE_RESULT content_fps=%u total_source_frames=%lu accepted_indices=%lu "
+                "skipped_indices=%lu scan_count=%lu elapsed_active_us=%llu clean_wall_us=%llu completed=%d\n",
+                apple.fps(), (unsigned long)appleResult.sourceFrames,
+                (unsigned long)appleResult.acceptedIndices, (unsigned long)appleResult.skippedIndices,
+                (unsigned long)appleResult.scans, (unsigned long long)activeUs,
+                (unsigned long long)appleResult.cleanWallUs, appleResult.naturalEnd);
+  appleResult.active = false;
 }
 
 // Work only on a copy until the panel confirms the in-flight scan. Preview
@@ -233,6 +260,7 @@ bool finishPending() {
   }
   if (!pendingMaintenance) acceptVideoFrame(pendingVideoFrame);
   ++scans; ++stats.scans;
+  if (appleResult.active) ++appleResult.scans;
   stats.uploadUs += timing.uploadUs; stats.busyUs += timing.busyUs;
   lastBusyUs = timing.busyUs;
   holdPending = pendingDriven;
@@ -266,7 +294,9 @@ bool clean(bool resume) {
   nextUs = esp_timer_get_time();
   lastCleanUs = lastSettleUs = nextUs;
   resetStats();
-  if (resume && pattern == Pattern::Apple) epochUs += esp_timer_get_time() - start;
+  const int64_t cleanUs = esp_timer_get_time() - start;
+  if (appleResult.active) appleResult.cleanWallUs += cleanUs;
+  if (resume && pattern == Pattern::Apple) epochUs += cleanUs;
   Serial.printf("CLEAN full_and_prepare_ms=%lu running=%d\n",
                 (unsigned long)((esp_timer_get_time() - start) / 1000), running);
   return true;
@@ -279,16 +309,26 @@ void start(DriveMode selected) {
   mode = selected;
   if (!finishPending()) return;
   frozen = false;
+  videoFrame = 0;
   presentedVideoFrame = UINT32_MAX;
+  appleResult = {};
   epochUs = esp_timer_get_time();
   render(epochUs);
   if (faulted) return;
-  clean(true);
+  if (pattern == Pattern::Apple) {
+    appleResult.active = true;
+    appleResult.sourceFrames = std::min<uint32_t>(apple.count(),
+        uint64_t(appleLimitMs - 1) * apple.fps() / 1000 + 1);
+    appleResult.wallStartUs = esp_timer_get_time();
+  }
+  if (!clean(true)) return;
   epochUs = esp_timer_get_time();
+  if (pattern == Pattern::Apple) acceptVideoFrame(0); // Initial full-refresh image.
   status();
 }
 
 void weakProbe(unsigned pulses, uint8_t source) {
+  appleResult.active = false;
   appleLoop = false;
   running = false;
   if (!finishPending()) return;
@@ -380,7 +420,7 @@ void command(char* text) {
     Serial.printf("APPLE content_fps=%u duration_ms=%lu audio=off\n", apple.fps(), (unsigned long)appleLimitMs);
     start(DriveMode::Budget); return;
   }
-  if (!strcmp(text, "stop")) { appleLoop = false; clean(false); return; }
+  if (!strcmp(text, "stop")) { appleResult.active = false; appleLoop = false; clean(false); return; }
   if (!strcmp(text, "clean")) { clean(running); return; }
   if (!strcmp(text, "prepare")) {
     if (!clean(false)) return;
@@ -474,6 +514,27 @@ void command(char* text) {
     if (!clean(false)) return;
     fullGuardMs = value; status(); return;
   }
+  if (sscanf(text, "decodebench %u %c", &value, &extra) == 1 && value >= 1 && value <= 1000) {
+    if (running || pending || panel.analogOn() || !appleReady) {
+      Serial.println("Decoder benchmark requires an idle board, analog off, and valid video."); return;
+    }
+    uint64_t decodeUs = 0;
+    uint32_t checksum = 2166136261u;
+    const int64_t wallStart = esp_timer_get_time();
+    for (unsigned n = 0; n < value; ++n) {
+      const int64_t begin = esp_timer_get_time();
+      if (!apple.frame(n % apple.count(), pendingFrame)) {
+        Serial.println("FAULT decoder benchmark"); faulted = true; return;
+      }
+      decodeUs += esp_timer_get_time() - begin;
+      for (uint8_t byte : pendingFrame) checksum = (checksum ^ byte) * 16777619u;
+      if (n % 16 == 15) delay(1);
+    }
+    Serial.printf("DECODEBENCH frames=%u decode_us=%llu decode_fps=%.2f wall_us=%llu hash=%lu panel_scans=0\n",
+                  value, (unsigned long long)decodeUs, decodeUs ? value * 1000000.0 / decodeUs : 0,
+                  (unsigned long long)(esp_timer_get_time() - wallStart), (unsigned long)checksum);
+    status(); return;
+  }
   if (sscanf(text, "verify %u %c", &value, &extra) == 1) {
     if (running || pending || !appleReady || value >= apple.count()) {
       Serial.println("Verification requires an idle board and a valid video frame."); return;
@@ -525,6 +586,7 @@ void command(char* text) {
       busyMin = std::min(busyMin, timing.busyUs); busyMax = std::max(busyMax, timing.busyUs);
       ++scans;
     }
+    lastBusyUs = busyTotal / value;
     Serial.printf("PROBE fr=%u gate_first=%u gate_last=%u scans=%u busy_us=%lu min_us=%lu max_us=%lu upload_us=%lu\n",
                   panel.frameRate(), panel.scanFirst(), panel.scanLast(), value,
                   (unsigned long)(busyTotal / value), (unsigned long)busyMin, (unsigned long)busyMax,
@@ -550,7 +612,7 @@ void command(char* text) {
     epochUs = esp_timer_get_time(); render(epochUs);
     clean(resume); epochUs = esp_timer_get_time(); status(); return;
   }
-  if (sscanf(text, "fps %u %c", &value, &extra) == 1 && value <= 60) {
+  if (sscanf(text, "fps %u %c", &value, &extra) == 1 && value <= 120) {
     targetFps = value; nextUs = esp_timer_get_time(); resetStats(); status(); return;
   }
   if (sscanf(text, "spi %u %c", &value, &extra) == 1 &&
@@ -671,12 +733,14 @@ void loop() {
     if (!maintenance) { planner().accept(frame); acceptVideoFrame(videoFrame); }
     if (frozen) {
       if (pattern == Pattern::Apple && appleLoop) {
+        reportAppleResult();
         Serial.println("APPLE loop; restarting after full refresh");
         start(mode);
         return;
       }
       if (!panel.powerOff()) { fault(); return; }
       running = false;
+      reportAppleResult();
       Serial.println("SETTLED running=0 analog_off=1 (no full refresh)");
       status(); return;
     }
