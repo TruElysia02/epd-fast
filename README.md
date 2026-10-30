@@ -12,6 +12,8 @@
 
 再比较30/45FPS后，用户选择45FPS作为流畅度与画质的折中；将单次驱动从约8ms延长到10ms、13.4ms均未显示明确收益，最后恢复FR5、11/11与流水线。残影仍存在，内容帧率下降没有自动解决它。
 
+新增默认关闭的[稳定区域补驱试验](docs/stable-tail-experiment.md)：目标稳定约 0.2 秒且普通预算耗尽后，每段稳定期额外补 2/4 次，变向立即取消。它根据变化历史推测候选区域，没有光学残影检测，效果仍需实屏对照。
+
 思路参考 [SmoothEPD](https://github.com/PinkiePie1/SmoothEPD) 和 [InkBoy](https://github.com/kuslota/InkBoy)，这里的规划器和 ESP32-C6 传输实现独立编写。波形表改自 Waveshare，并保留其授权声明。代码来源见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ## 硬件与接线
@@ -57,6 +59,7 @@ pio device monitor --port COM7
 | `history 100` / `history 150` / `history 200` / `history off` | 按估计位置调整未完成反向的剂量，默认关闭 |
 | `weakprobe N [weak\|sameA\|sameB]` | 用 1…11 次脉冲比较两种底色上的源状态，sameA/sameB 为映射对照，结束关升压 |
 | `weak 1` … `weak 4` / `weak off` | 黑色尾部改用弱态；实验模型按两次弱态算一次强态，真实比例尚未校准；默认关闭 |
+| `stable 2` / `stable 4` / `stable off` | 对目标稳定约 0.2 秒且普通预算已耗尽的像素，每段稳定期额外补 2/4 次强脉冲；默认关闭 |
 | `scan full` / `scan 63 233` | 全部 gate 行 / 指定实际 gate 扫描范围；与上传窗口不同 |
 | `guard 0` / `guard 3000` | 全刷后额外诊断等待，单位 ms；不会省略硬件复位 |
 | `verify N` | 仅在停机时解码视频第 N 帧，输出校验值与解码耗时 |

@@ -50,6 +50,7 @@ struct {
   uint32_t scans = 0, plans = 0, overruns = 0;
   uint32_t contentFrames = 0, skippedFrames = 0;
   uint32_t pipelineStages = 0, pipelineUses = 0;
+  uint32_t stableTailPulses = 0;
   uint64_t pipelineCopyUs = 0;
   uint64_t planUs = 0, uploadUs = 0, busyUs = 0, renderUs = 0, commitUs = 0;
   int64_t sinceUs = 0;
@@ -57,6 +58,7 @@ struct {
 struct {
   bool active = false, naturalEnd = false;
   uint32_t sourceFrames = 0, acceptedIndices = 0, skippedIndices = 0, scans = 0;
+  uint32_t stableTailPulses = 0;
   int64_t wallStartUs = 0, cleanWallUs = 0;
 } appleResult;
 
@@ -82,7 +84,7 @@ void fault() {
 }
 
 void help() {
-  Serial.println("fast29 v7 / SSD1680 T94 / XIAO ESP32-C6 / 296x128 landscape");
+  Serial.println("fast29 v8 / SSD1680 T94 / XIAO ESP32-C6 / 296x128 landscape");
   Serial.println("budget | net : full clean, reset model, run selected strategy");
   Serial.println("blocks | line | reverse | clock : change test after full clean");
   Serial.println("fps N : 1..120 scans/s; fps 0 : uncapped (NOT optical settling)");
@@ -109,6 +111,7 @@ void help() {
   Serial.println("paired on | paired off : follow each drive with one HOLD phase; stops first");
   Serial.println("history off | history 100|150|200 : experimental return-dose estimate; stops first");
   Serial.println("weak N | weak off : experimental black tail, 1..4 strong doses replaced by twice as many weak scans");
+  Serial.println("stable off | stable 2|4 : once-per-target extra strong pulses after ~192ms stable; budget only");
   Serial.println("weakprobe N [weak|sameA|sameB] : 1..11 pulses on HOLD/A/test/B patches, then power off");
 }
 
@@ -116,13 +119,14 @@ void status() {
   Serial.printf("mode=%s pattern=%s running=%d fault=%d target_fps=%u spi_mhz=%lu "
                 "end=0x%02x pulses=%u/%u window=%s analog=%d guard_ms=%lu video_loop=%d "
                 "fr=%u gate_first=%u gate_last=%u reuse=%d wait=%s video_ready=%d content_fps=%u "
-                "pipeline=%d paired=%d history=%u weak_tail=%u version=7\n",
+                "pipeline=%d paired=%d history=%u weak_tail=%u stable_tail=%u stable_ms=192 version=8\n",
                 modeName(), patternName(), running, faulted, targetFps,
                 (unsigned long)(panel.clock() / 1000000), panel.endOption(), blackPulses, whitePulses,
                 panel.partialUpload() ? "partial" : "full", panel.analogOn(),
                 (unsigned long)fullGuardMs, appleLoop, panel.frameRate(), panel.scanFirst(), panel.scanLast(),
                 panel.reuseMasks(), irqWait ? "irq" : "poll", appleReady, apple.fps(),
-                pipelineEnabled, panel.pairedHold(), planner().reversalPercent(), planner().weakTail());
+                pipelineEnabled, panel.pairedHold(), planner().reversalPercent(), planner().weakTail(),
+                planner().stableTail());
   Serial.flush();
 }
 
@@ -214,11 +218,13 @@ void reportAppleResult() {
   if (!appleResult.active) return;
   const int64_t activeUs = esp_timer_get_time() - appleResult.wallStartUs - appleResult.cleanWallUs;
   Serial.printf("APPLE_RESULT content_fps=%u total_source_frames=%lu accepted_indices=%lu "
-                "skipped_indices=%lu scan_count=%lu elapsed_active_us=%llu clean_wall_us=%llu completed=%d\n",
+                "skipped_indices=%lu scan_count=%lu elapsed_active_us=%llu clean_wall_us=%llu completed=%d "
+                "stable_tail_pulses=%lu\n",
                 apple.fps(), (unsigned long)appleResult.sourceFrames,
                 (unsigned long)appleResult.acceptedIndices, (unsigned long)appleResult.skippedIndices,
                 (unsigned long)appleResult.scans, (unsigned long long)activeUs,
-                (unsigned long long)appleResult.cleanWallUs, appleResult.naturalEnd);
+                (unsigned long long)appleResult.cleanWallUs, appleResult.naturalEnd,
+                (unsigned long)appleResult.stableTailPulses);
   appleResult.active = false;
 }
 
@@ -237,7 +243,9 @@ void preparePipeline(int64_t predicted) {
   pipelineMaintenance = !frozen && mode == DriveMode::Budget &&
                         predicted - lastSettleUs >= 20000000;
   const int64_t planStart = esp_timer_get_time();
-  pipelineDriven = shadowPlanner->preview(frame, pipelineMaintenance);
+  // Use wall time for stability, not the future source-frame prediction.
+  pipelineDriven = shadowPlanner->preview(frame, pipelineMaintenance,
+      uint32_t(esp_timer_get_time() / 1000));
   pipelinePlanUs = esp_timer_get_time() - planStart;
   pipelinePrepared = true;
 }
@@ -247,6 +255,7 @@ bool finishPending() {
   ScanTiming timing;
   if (!panel.finishScan(timing)) { fault(); return false; }
   const int64_t begin = esp_timer_get_time();
+  const uint32_t tailBefore = planner().stableTailPulsesDelivered();
   if (pipelinePrepared) {
     // The shadow's physical history contains exactly this successful scan.
     std::swap(currentPlanner, shadowPlanner);
@@ -260,7 +269,12 @@ bool finishPending() {
   }
   if (!pendingMaintenance) acceptVideoFrame(pendingVideoFrame);
   ++scans; ++stats.scans;
-  if (appleResult.active) ++appleResult.scans;
+  const uint32_t tailPulses = planner().stableTailPulsesDelivered() - tailBefore;
+  stats.stableTailPulses += tailPulses;
+  if (appleResult.active) {
+    ++appleResult.scans;
+    appleResult.stableTailPulses += tailPulses;
+  }
   stats.uploadUs += timing.uploadUs; stats.busyUs += timing.busyUs;
   lastBusyUs = timing.busyUs;
   holdPending = pendingDriven;
@@ -303,8 +317,8 @@ bool clean(bool resume) {
 }
 
 void start(DriveMode selected) {
-  if (selected == DriveMode::Net && planner().weakTail()) {
-    Serial.println("Disable weak tail before selecting net mode."); return;
+  if (selected == DriveMode::Net && (planner().weakTail() || planner().stableTail())) {
+    Serial.println("Disable weak and stable tails before selecting net mode."); return;
   }
   mode = selected;
   if (!finishPending()) return;
@@ -467,11 +481,24 @@ void command(char* text) {
   unsigned value;
   unsigned other;
   char extra;
+  if (!strcmp(text, "stable off") ||
+      (sscanf(text, "stable %u %c", &value, &extra) == 1 && (value == 2 || value == 4))) {
+    if (!strcmp(text, "stable off")) value = 0;
+    if (value && (mode == DriveMode::Net || planner().reversalPercent() || planner().weakTail())) {
+      Serial.println("Stable tail requires budget mode, history off, and weak off."); return;
+    }
+    if (!clean(false)) return;
+    if (!planner().setStableTail(value)) {
+      Serial.println("Stable tail configuration rejected."); return;
+    }
+    planner().reset(mode, frame);
+    status(); return;
+  }
   if (!strcmp(text, "weak off") ||
       (sscanf(text, "weak %u %c", &value, &extra) == 1 && value >= 1 && value <= 4)) {
     if (!strcmp(text, "weak off")) value = 0;
-    if (value && (mode == DriveMode::Net || planner().reversalPercent())) {
-      Serial.println("Weak tail requires budget mode and history off."); return;
+    if (value && (mode == DriveMode::Net || planner().reversalPercent() || planner().stableTail())) {
+      Serial.println("Weak tail requires budget mode, history off, and stable off."); return;
     }
     if (!clean(false)) return;
     if (!planner().setWeakTail(value)) {
@@ -486,8 +513,8 @@ void command(char* text) {
       (sscanf(text, "history %u %c", &value, &extra) == 1 &&
        (value == 100 || value == 150 || value == 200))) {
     if (!strcmp(text, "history off")) value = 0;
-    if (value && planner().weakTail()) {
-      Serial.println("Disable weak tail before selecting history mode."); return;
+    if (value && (planner().weakTail() || planner().stableTail())) {
+      Serial.println("Disable weak and stable tails before selecting history mode."); return;
     }
     if (value && !Planner::supportsHistory(blackPulses, whitePulses)) {
       Serial.println("History requires lcm(black pulses, white pulses) <= 255."); return;
@@ -640,7 +667,7 @@ void reportStats(int64_t now) {
   Serial.printf("MEASURE mode=%s pattern=%s scan_hz=%.2f plan_us=%lu "
                 "upload_us=%lu busy_us=%lu render_us=%lu commit_us=%lu "
                 "overruns=%lu scans=%lu heap=%lu content_hz=%.2f skipped=%lu "
-                "pipeline_used=%lu pipeline_staged=%lu pipeline_copy_us=%lu\n",
+                "pipeline_used=%lu pipeline_staged=%lu pipeline_copy_us=%lu stable_tail_pulses=%lu\n",
                 modeName(), patternName(), stats.scans * 1000000.0 / elapsed,
                 (unsigned long)(stats.plans ? stats.planUs / stats.plans : 0),
                 (unsigned long)(stats.scans ? stats.uploadUs / stats.scans : 0),
@@ -651,7 +678,8 @@ void reportStats(int64_t now) {
                 (unsigned long)ESP.getFreeHeap(), stats.contentFrames * 1000000.0 / elapsed,
                 (unsigned long)stats.skippedFrames,
                 (unsigned long)stats.pipelineUses, (unsigned long)stats.pipelineStages,
-                (unsigned long)(stats.pipelineStages ? stats.pipelineCopyUs / stats.pipelineStages : 0));
+                (unsigned long)(stats.pipelineStages ? stats.pipelineCopyUs / stats.pipelineStages : 0),
+                (unsigned long)stats.stableTailPulses);
   resetStats();
 }
 }  // namespace
@@ -719,7 +747,7 @@ void loop() {
     stats.planUs += pipelinePlanUs + esp_timer_get_time() - planStart;
     ++stats.pipelineUses;
   } else {
-    driven = planner().plan(frame, maintenance);
+    driven = planner().plan(frame, maintenance, uint32_t(now / 1000));
     stats.planUs += esp_timer_get_time() - planStart;
   }
   pipelineReady = false;
@@ -732,6 +760,11 @@ void loop() {
   } else {
     if (!maintenance) { planner().accept(frame); acceptVideoFrame(videoFrame); }
     if (frozen) {
+      if (planner().hasStableTailPending()) {
+        framePrepared = true;
+        delay(1);
+        return;
+      }
       if (pattern == Pattern::Apple && appleLoop) {
         reportAppleResult();
         Serial.println("APPLE loop; restarting after full refresh");

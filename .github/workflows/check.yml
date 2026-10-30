@@ -21,6 +21,8 @@ jobs:
           ./build/planner_history_test
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tests/planner_weak_tail_test.cpp -o build/planner_weak_tail_test
           ./build/planner_weak_tail_test
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tests/planner_stable_tail_test.cpp -o build/planner_stable_tail_test
+          ./build/planner_stable_tail_test
           python tests/make_video_fixture.py
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tests/apple_test.cpp lib/miniz/miniz_tinfl.c -o build/apple_test
           ./build/apple_test build/fixtures/ba29.bin build/fixtures/ba29.hashes

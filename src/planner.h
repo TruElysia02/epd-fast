@@ -10,6 +10,7 @@ constexpr size_t kPixels = kWidth * kHeight;
 constexpr size_t kFrameBytes = kPixels / 8;
 constexpr uint32_t kCleanScans = 2000;
 constexpr int kPulseLimit = 7;
+static_assert(kCleanScans <= 2047, "Stable-tail history reserves 12 signed bits");
 
 enum class DriveMode { Budget, Net };
 
@@ -29,6 +30,8 @@ class Planner {
     } else memset(remaining_, 0, sizeof(remaining_));
     memset(net_, 0, sizeof(net_));
     memset(active_, mode == DriveMode::Net ? 0xff : 0, sizeof(active_));
+    stableClockValid_ = false;
+    stableTailPulsesDelivered_ = 0;
   }
 
   bool setPulses(uint8_t black, uint8_t white) {
@@ -48,7 +51,7 @@ class Planner {
   // the full-refresh reference rather than interpreted as legacy budgets.
   bool setReversalPercent(uint16_t value) {
     if (value != 0 && value != 100 && value != 150 && value != 200) return false;
-    if (value && weakTail_) return false;
+    if (value && (weakTail_ || stableTail_)) return false;
     const uint8_t black = blackPulses_ ? blackPulses_ : kPulseLimit;
     const uint8_t white = whitePulses_ ? whitePulses_ : kPulseLimit;
     if (value && !supportsHistory(black, white)) return false;
@@ -63,13 +66,33 @@ class Planner {
   // optical strength. Call reset after changing units; disable before Net mode.
   bool setWeakTail(uint8_t strongEquivalent) {
     if (strongEquivalent > 4 ||
-        (strongEquivalent && (reversalPercent_ || mode_ == DriveMode::Net))) return false;
+        (strongEquivalent && (reversalPercent_ || stableTail_ || mode_ == DriveMode::Net))) return false;
     weakTail_ = strongEquivalent;
     return true;
   }
   uint8_t weakTail() const { return weakTail_; }
 
-  bool plan(const uint8_t* next, bool settle = false) {
+  // Reset from a full-refresh reference after changing this mode. The packed
+  // net history is private to stable tail: 12 signed count bits + 4 age bits.
+  bool setStableTail(uint8_t pulses) {
+    if ((pulses != 0 && pulses != 2 && pulses != 4) ||
+        (pulses && (weakTail_ || reversalPercent_ || mode_ == DriveMode::Net))) return false;
+    stableTail_ = pulses;
+    return true;
+  }
+  uint8_t stableTail() const { return stableTail_; }
+  uint32_t stableTailPulsesDelivered() const { return stableTailPulsesDelivered_; }
+  bool hasStableTailPending() const {
+    if (!stableTail_ || mode_ != DriveMode::Budget) return false;
+    for (uint8_t value : active_) if (value) return true;
+    return false;
+  }
+
+  bool plan(const uint8_t* next, bool settle = false, uint32_t nowMs = 0) {
+    if (stableTail_ && mode_ == DriveMode::Budget) {
+      stagedTimeMs_ = nowMs;
+      return planStableTail(next, settle);
+    }
     if (weakTail_ && mode_ == DriveMode::Budget)
       return settle ? planWeakTail<true>(next) : planWeakTail<false>(next);
     if (reversalPercent_ && mode_ == DriveMode::Budget)
@@ -81,7 +104,11 @@ class Planner {
 
   // Generate masks against a predicted committed state without consuming or
   // replacing its budgets. A discarded preview leaves delivered state intact.
-  bool preview(const uint8_t* next, bool settle = false) {
+  bool preview(const uint8_t* next, bool settle = false, uint32_t nowMs = 0) {
+    if (stableTail_ && mode_ == DriveMode::Budget) {
+      stagedTimeMs_ = nowMs;
+      return planStableTail(next, settle);
+    }
     if (weakTail_ && mode_ == DriveMode::Budget)
       return settle ? planWeakTail<true>(next) : planWeakTail<false, false>(next);
     if (reversalPercent_ && mode_ == DriveMode::Budget)
@@ -93,7 +120,7 @@ class Planner {
 
   // Called only when adopting the corresponding preview for the next scan.
   void applyPreview(const uint8_t* next, bool settle = false) {
-    if (settle || mode_ == DriveMode::Net || reversalPercent_) return;
+    if (settle || mode_ == DriveMode::Net || reversalPercent_ || stableTail_) return;
     for (size_t i = 0; i < kFrameBytes; ++i) {
       uint8_t changed = next[i] ^ target_[i];
       while (changed) {
@@ -106,7 +133,9 @@ class Planner {
   }
 
   void commit(const uint8_t* next, bool settle = false) {
-    if (weakTail_ && mode_ == DriveMode::Budget) {
+    if (stableTail_ && mode_ == DriveMode::Budget) {
+      updateStableTail(next, settle, true);
+    } else if (weakTail_ && mode_ == DriveMode::Budget) {
       if (settle) commitWeakTail<true>();
       else commitWeakTail<false>();
     } else if (reversalPercent_ && mode_ == DriveMode::Budget) {
@@ -119,12 +148,120 @@ class Planner {
   }
 
   // Even when no scan was needed, accept the latest desired bitmap.
-  void accept(const uint8_t* next) { memcpy(target_, next, kFrameBytes); }
-  int netAt(size_t pixel) const { return net_[pixel]; }
+  void accept(const uint8_t* next) {
+    if (stableTail_ && mode_ == DriveMode::Budget) updateStableTail(next, false, false);
+    memcpy(target_, next, kFrameBytes);
+  }
+  int netAt(size_t pixel) const {
+    return stableTail_ && mode_ == DriveMode::Budget ? stableNet(pixel) : net_[pixel];
+  }
   uint8_t black[kFrameBytes]{};
   uint8_t white[kFrameBytes]{};
 
  private:
+  static constexpr uint8_t kStableCount = 0x3f;
+  static constexpr uint8_t kStableCandidate = 0x40;
+  static constexpr uint8_t kStableDelivering = 0x80;
+  static constexpr uint8_t kStableDone = 0xc0;
+  static constexpr uint32_t kStableTickMs = 16;
+  static constexpr uint8_t kStableAgeThreshold = 12;
+
+  int stableNet(size_t pixel) const {
+    const unsigned value = uint16_t(net_[pixel]) & 0x0fffu;
+    return value & 0x0800u ? int(value) - 4096 : int(value);
+  }
+  uint8_t stableAge(size_t pixel, uint32_t elapsedTicks) const {
+    const unsigned age = (uint16_t(net_[pixel]) >> 12) + elapsedTicks;
+    return age < 15 ? uint8_t(age) : 15;
+  }
+  void storeStableHistory(size_t pixel, int net, uint8_t age) {
+    net_[pixel] = int16_t((uint16_t(age) << 12) | (unsigned(net) & 0x0fffu));
+  }
+  uint32_t stableElapsedTicks() const {
+    // Predicted pipeline times may be slightly ahead of a later direct plan.
+    // Do not interpret that small backwards correction as a millis wrap.
+    const int32_t elapsed = int32_t(stagedTimeMs_ - stableClockMs_);
+    return stableClockValid_ && elapsed > 0 ? uint32_t(elapsed) / kStableTickMs : 0;
+  }
+  void advanceStableClock(uint32_t ticks) {
+    if (!stableClockValid_) {
+      stableClockMs_ = stagedTimeMs_;
+      stableClockValid_ = true;
+    } else stableClockMs_ += ticks * kStableTickMs;
+  }
+
+  // Age is saturated, not a wrapping 4-bit timestamp. A target change resets
+  // its age in the current global tick; the 12-tick gate is about 177..192ms.
+  // Planning and preview change only masks and the staged wall-clock sample.
+  bool planStableTail(const uint8_t* next, bool maintenance) {
+    const uint32_t ticks = stableElapsedTicks();
+    bool any = false;
+    for (size_t i = 0; i < kFrameBytes; ++i) {
+      const uint8_t desired = next[i], changed = desired ^ target_[i];
+      uint8_t todo = maintenance ? 0xff : (active_[i] | changed);
+      uint8_t toBlack = 0, toWhite = 0;
+      while (todo) {
+        const uint8_t mask = todo & -todo;
+        todo &= uint8_t(todo - 1);
+        const size_t p = i * 8 + pixelBit(mask);
+        const bool wantWhite = desired & mask;
+        bool drive;
+        if (maintenance) drive = wantWhite ? stableNet(p) > 0 : stableNet(p) < 0;
+        else if (changed & mask) drive = true;
+        else {
+          const uint8_t state = remaining_[p] & 0xc0u;
+          const uint8_t count = remaining_[p] & kStableCount;
+          drive = count || (state == kStableCandidate && stableAge(p, ticks) >= kStableAgeThreshold);
+        }
+        if (drive) (wantWhite ? toWhite : toBlack) |= mask;
+      }
+      black[i] = toBlack; white[i] = toWhite;
+      any |= (toBlack | toWhite) != 0;
+    }
+    return any;
+  }
+
+  void updateStableTail(const uint8_t* next, bool maintenance, bool delivered) {
+    const uint32_t ticks = stableElapsedTicks();
+    for (size_t i = 0; i < kFrameBytes; ++i) {
+      const uint8_t changed = maintenance ? 0 : next[i] ^ target_[i];
+      const uint8_t toBlack = delivered ? black[i] : 0;
+      const uint8_t toWhite = delivered ? white[i] : 0;
+      uint8_t todo = active_[i] | changed | toBlack | toWhite;
+      uint8_t active = 0;
+      while (todo) {
+        const uint8_t mask = todo & -todo;
+        todo &= uint8_t(todo - 1);
+        const size_t p = i * 8 + pixelBit(mask);
+        int net = stableNet(p);
+        uint8_t age = stableAge(p, ticks);
+        uint8_t value = remaining_[p];
+        if (changed & mask) {
+          value = kStableCandidate | ((next[i] & mask) ? whitePulses_ : blackPulses_);
+          age = 0;
+        }
+        uint8_t state = value & 0xc0u, count = value & kStableCount;
+        if ((toBlack | toWhite) & mask) {
+          net += (toBlack & mask) ? 1 : -1;
+          if (!maintenance) {
+            if (state == kStableCandidate && count) --count;
+            else if (state == kStableCandidate || state == kStableDelivering) {
+              if (state == kStableCandidate) count = stableTail_;
+              --count;
+              ++stableTailPulsesDelivered_;
+              state = count ? kStableDelivering : kStableDone;
+            }
+          }
+        }
+        remaining_[p] = state | count;
+        storeStableHistory(p, net, age);
+        if (state == kStableCandidate || (state == kStableDelivering && count)) active |= mask;
+      }
+      active_[i] = active;
+    }
+    advanceStableClock(ticks);
+  }
+
   template<bool Settle, bool UpdateBudget = true>
   bool planWeakTail(const uint8_t* next) {
     bool any = false;
@@ -336,8 +473,11 @@ class Planner {
   DriveMode mode_ = DriveMode::Budget;
   uint8_t blackPulses_ = 0, whitePulses_ = 0;
   uint8_t weakTail_ = 0;
+  uint8_t stableTail_ = 0;
   uint16_t reversalPercent_ = 0;
   uint8_t historyMaximum_ = 0, blackStep_ = 0, whiteStep_ = 0;
+  bool stableClockValid_ = false;
+  uint32_t stableClockMs_ = 0, stagedTimeMs_ = 0, stableTailPulsesDelivered_ = 0;
   uint8_t active_[kFrameBytes]{};
   uint8_t target_[kFrameBytes]{};
   // With weak tail: half-strong pulse budgets; with both modes off: ordinary
