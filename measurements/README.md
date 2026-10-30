@@ -6,6 +6,7 @@
 | --- | --- |
 | stable-tail-trials.json | 45FPS、FR5、11/11 下，稳定约 0.2 秒后额外补驱的基线与试验；补偿计数是像素×脉冲，不是额外扫描次数 |
 | stable-maintenance-trials.json | 保留稳定后补 2 次，单独开关 20 秒净脉冲维护的 30 秒对照，记录实际维护扫描和像素次数 |
+| static-drift-probe.json | 同色全刷参考与 13+13 次棋盘格往返历史的静态保持扫描探针；扫描数、实际阶段时间及中途取消验证 |
 | v2-normal-10.json | 10MHz、结束参数 0x22，局部行上传 |
 | v2-fast-10.json | 10MHz、结束参数 0x02，局部行上传 |
 | v2-fast-20.json | 20MHz、结束参数 0x02，局部行上传 |

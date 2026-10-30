@@ -61,6 +61,7 @@ pio device monitor --port COM7
 | `weak 1` … `weak 4` / `weak off` | 黑色尾部改用弱态；实验模型按两次弱态算一次强态，真实比例尚未校准；默认关闭 |
 | `stable 2` / `stable 4` / `stable off` | 对目标稳定约 0.2 秒且普通预算已耗尽的像素，每段稳定期额外补 2/4 次强脉冲；默认关闭 |
 | `maintenance on` / `maintenance off` | 开启 / 关闭每 20 秒的净脉冲账本维护，默认开启；切换时全刷停机，定期全刷仍执行 |
+| `drift hold` / `drift idle` | FR5、全部 gate 下的黑白静态历史对照：短脉冲往返后继续保持扫描 / 关电静置，结束保留图案；见[探针说明](docs/static-drift-probe.md) |
 | `scan full` / `scan 63 233` | 全部 gate 行 / 指定实际 gate 扫描范围；与上传窗口不同 |
 | `guard 0` / `guard 3000` | 全刷后额外诊断等待，单位 ms；不会省略硬件复位 |
 | `verify N` | 仅在停机时解码视频第 N 帧，输出校验值与解码耗时 |

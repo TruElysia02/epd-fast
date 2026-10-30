@@ -1,0 +1,65 @@
+{
+  "date": "2026-10-30",
+  "reason": "User observed both white and black regions becoming gray after motion stopped. Disabling20s net-count maintenance produced no clear benefit.",
+  "profile": "T94/SSD1680 configuration,full296gates,FR5,SPI20MHz,partialRAM,reuseon,paired off,weak off",
+  "layout": "296x128 landscape; top desired white,bottom desired black; left REF unchanged since full refresh; right RETURN only alternating8x8 checker cells driven. Each RETURN area64x24,12cells driven per row,768pixels per row.",
+  "conditioning": {
+    "outgoing_strong_scans": 13,
+    "return_strong_scans": 13,
+    "hold_ending_scans": 1,
+    "total_selected_pixels_per_scan": 1536
+  },
+  "timing": "After conditioning and HOLD ending:3s analog-on/no-scan baseline, then1500 all-zero-mask scans anchored at12.5ms intervals; finally analog off without full refresh.",
+  "limits": "13 continuous scans per leg are not the same time sequence as11 ordinary budget pulses plus a delayed2-pulse stable tail. Digital masks and scan counts do not measure reflectance or establish zero electric field at the pixel.",
+  "asset_sha256_unchanged": "a9d26bf605b20f2fc856e759a772fff71d18bce279b8d99096eac9ea35cfebdf",
+  "firmware_bytes": 3268704,
+  "firmware_sha256": "ff30c32f17434b7810552475654857035a23eb9e938dd7c840248f4852db3f31",
+  "verification": "Both firmware environments build; live drift idle->stop cancellation ends with no pending scan/fault, followed by a fresh successful drift hold run.",
+  "hold_result": {
+    "mode": "hold",
+    "hold_scans": "1500",
+    "hold_busy_us": "12024907",
+    "sample_wall_us": "18746462",
+    "total_activations": "1527",
+    "canceled": "0",
+    "analog_off": "1"
+  },
+  "start_log": [
+    "COMMAND status",
+    "mode=budget pattern=blocks running=0 fault=0 target_fps=30 spi_mhz=20 end=0x02 pulses=11/11 window=partial analog=0 guard_ms=0 video_loop=0 fr=5 gate_first=0 gate_last=295 reuse=1 wait=irq video_ready=1 content_fps=45 pipeline=1 paired=0 history=0 weak_tail=0 stable_tail=2 stable_ms=192 maintenance=0 drift=0 version=10",
+    "COMMAND drift hold",
+    "CLEAN full_and_prepare_ms=1615 running=0",
+    "DRIFT baseline_ms=3000 mode=hold roundtrip_pulses=13 expected_final=W_top,B_bottom",
+    "mode=budget pattern=blocks running=0 fault=0 target_fps=30 spi_mhz=20 end=0x02 pulses=11/11 window=partial analog=1 guard_ms=0 video_loop=0 fr=5 gate_first=0 gate_last=295 reuse=1 wait=irq video_ready=1 content_fps=45 pipeline=1 paired=0 history=0 weak_tail=0 stable_tail=2 stable_ms=192 maintenance=0 drift=1 version=10",
+    "COMMAND status",
+    "mode=budget pattern=blocks running=0 fault=0 target_fps=30 spi_mhz=20 end=0x02 pulses=11/11 window=partial analog=1 guard_ms=0 video_loop=0 fr=5 gate_first=0 gate_last=295 reuse=1 wait=irq video_ready=1 content_fps=45 pipeline=1 paired=0 history=0 weak_tail=0 stable_tail=2 stable_ms=192 maintenance=0 drift=1 version=10"
+  ],
+  "observation_log": [
+    "COMMAND status",
+    "mode=budget pattern=blocks running=0 fault=0 target_fps=30 spi_mhz=20 end=0x02 pulses=11/11 window=partial analog=1 guard_ms=0 video_loop=0 fr=5 gate_first=0 gate_last=295 reuse=1 wait=irq video_ready=1 content_fps=45 pipeline=1 paired=0 history=0 weak_tail=0 stable_tail=2 stable_ms=192 maintenance=0 drift=1 version=10",
+    "DRIFT checkpoint=1000 elapsed_ms=12496",
+    "DRIFT checkpoint=1500 elapsed_ms=18746",
+    "DRIFT_RESULT mode=hold hold_scans=1500 hold_busy_us=12024907 sample_wall_us=18746462 total_activations=1527 canceled=0 analog_off=1",
+    "mode=budget pattern=blocks running=0 fault=0 target_fps=30 spi_mhz=20 end=0x02 pulses=11/11 window=partial analog=0 guard_ms=0 video_loop=0 fr=5 gate_first=0 gate_last=295 reuse=1 wait=irq video_ready=1 content_fps=45 pipeline=1 paired=0 history=0 weak_tail=0 stable_tail=2 stable_ms=192 maintenance=0 drift=0 version=10",
+    "COMMAND status",
+    "mode=budget pattern=blocks running=0 fault=0 target_fps=30 spi_mhz=20 end=0x02 pulses=11/11 window=partial analog=0 guard_ms=0 video_loop=0 fr=5 gate_first=0 gate_last=295 reuse=1 wait=irq video_ready=1 content_fps=45 pipeline=1 paired=0 history=0 weak_tail=0 stable_tail=2 stable_ms=192 maintenance=0 drift=0 version=10"
+  ],
+  "cancellation_log": [
+    "COMMAND status",
+    "mode=budget pattern=blocks running=0 fault=0 target_fps=30 spi_mhz=20 end=0x02 pulses=11/11 window=partial analog=0 guard_ms=0 video_loop=0 fr=5 gate_first=0 gate_last=295 reuse=1 wait=irq video_ready=1 content_fps=45 pipeline=1 paired=0 history=0 weak_tail=0 stable_tail=2 stable_ms=192 maintenance=0 drift=0 version=10",
+    "COMMAND drift idle",
+    "CLEAN full_and_prepare_ms=1615 running=0",
+    "DRIFT baseline_ms=3000 mode=idle roundtrip_pulses=13 expected_final=W_top,B_bottom",
+    "mode=budget pattern=blocks running=0 fault=0 target_fps=30 spi_mhz=20 end=0x02 pulses=11/11 window=partial analog=1 guard_ms=0 video_loop=0 fr=5 gate_first=0 gate_last=295 reuse=1 wait=irq video_ready=1 content_fps=45 pipeline=1 paired=0 history=0 weak_tail=0 stable_tail=2 stable_ms=192 maintenance=0 drift=1 version=10",
+    "COMMAND stop",
+    "DRIFT_RESULT mode=idle hold_scans=0 hold_busy_us=0 sample_wall_us=0 total_activations=27 canceled=1 analog_off=1",
+    "CLEAN full_and_prepare_ms=1615 running=0",
+    "mode=budget pattern=blocks running=0 fault=0 target_fps=30 spi_mhz=20 end=0x02 pulses=11/11 window=partial analog=0 guard_ms=0 video_loop=0 fr=5 gate_first=0 gate_last=295 reuse=1 wait=irq video_ready=1 content_fps=45 pipeline=1 paired=0 history=0 weak_tail=0 stable_tail=2 stable_ms=192 maintenance=0 drift=0 version=10",
+    "COMMAND status",
+    "mode=budget pattern=blocks running=0 fault=0 target_fps=30 spi_mhz=20 end=0x02 pulses=11/11 window=partial analog=0 guard_ms=0 video_loop=0 fr=5 gate_first=0 gate_last=295 reuse=1 wait=irq video_ready=1 content_fps=45 pipeline=1 paired=0 history=0 weak_tail=0 stable_tail=2 stable_ms=192 maintenance=0 drift=0 version=10"
+  ],
+  "quality_observation": {
+    "status": "awaiting_user_feedback"
+  },
+  "device_after_test": "Idle, analog off, diagnostic image retained for observation. Apple loop can resume via normal full-clean start."
+}

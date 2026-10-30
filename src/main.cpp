@@ -66,6 +66,19 @@ struct {
   int64_t wallStartUs = 0, cleanWallUs = 0;
 } appleResult;
 
+enum class DriftPhase { None, Baseline, Sample };
+struct {
+  DriftPhase phase = DriftPhase::None;
+  bool scanning = false, savedPaired = false, savedWeak = false;
+  uint16_t scans = 0;
+  int64_t phaseStartUs = 0, nextScanUs = 0;
+  uint64_t busyUs = 0;
+} drift;
+constexpr unsigned kDriftPulses = 13, kDriftScans = 1500;
+constexpr int64_t kDriftPeriodUs = 12500, kDriftSampleUs = kDriftScans * kDriftPeriodUs;
+static_assert(2 * kDriftPulses + 1 + kDriftScans < kCleanScans,
+              "Drift probe must fit between full cleans");
+
 const char* modeName() { return mode == DriveMode::Budget ? "budget" : "net"; }
 const char* patternName() {
   switch (pattern) {
@@ -79,6 +92,7 @@ const char* patternName() {
 }
 
 void fault() {
+  drift.phase = DriftPhase::None;
   appleResult.active = false;
   pipelinePrepared = pipelineReady = false;
   running = false;
@@ -88,7 +102,7 @@ void fault() {
 }
 
 void help() {
-  Serial.println("fast29 v9 / SSD1680 T94 / XIAO ESP32-C6 / 296x128 landscape");
+  Serial.println("fast29 v10 / SSD1680 T94 / XIAO ESP32-C6 / 296x128 landscape");
   Serial.println("budget | net : full clean, reset model, run selected strategy");
   Serial.println("blocks | line | reverse | clock : change test after full clean");
   Serial.println("fps N : 1..120 scans/s; fps 0 : uncapped (NOT optical settling)");
@@ -118,20 +132,21 @@ void help() {
   Serial.println("stable off | stable 2|4 : once-per-target extra strong pulses after ~192ms stable; budget only");
   Serial.println("maintenance on | maintenance off : 20s net-count correction; stops first, default on; full cleans remain");
   Serial.println("weakprobe N [weak|sameA|sameB] : 1..11 pulses on HOLD/A/test/B patches, then power off");
+  Serial.println("drift hold | drift idle : FR5 static reference/round-trip probe; 13+13 pulses, then 1500 HOLD scans or equal power-off wait");
 }
 
 void status() {
   Serial.printf("mode=%s pattern=%s running=%d fault=%d target_fps=%u spi_mhz=%lu "
                 "end=0x%02x pulses=%u/%u window=%s analog=%d guard_ms=%lu video_loop=%d "
                 "fr=%u gate_first=%u gate_last=%u reuse=%d wait=%s video_ready=%d content_fps=%u "
-                "pipeline=%d paired=%d history=%u weak_tail=%u stable_tail=%u stable_ms=192 maintenance=%d version=9\n",
+                "pipeline=%d paired=%d history=%u weak_tail=%u stable_tail=%u stable_ms=192 maintenance=%d drift=%d version=10\n",
                 modeName(), patternName(), running, faulted, targetFps,
                 (unsigned long)(panel.clock() / 1000000), panel.endOption(), blackPulses, whitePulses,
                 panel.partialUpload() ? "partial" : "full", panel.analogOn(),
                 (unsigned long)fullGuardMs, appleLoop, panel.frameRate(), panel.scanFirst(), panel.scanLast(),
                 panel.reuseMasks(), irqWait ? "irq" : "poll", appleReady, apple.fps(),
                 pipelineEnabled, panel.pairedHold(), planner().reversalPercent(), planner().weakTail(),
-                planner().stableTail(), maintenanceEnabled);
+                planner().stableTail(), maintenanceEnabled, drift.phase != DriftPhase::None);
   Serial.flush();
 }
 
@@ -421,12 +436,116 @@ void weakProbe(unsigned pulses, uint8_t source) {
   status();
 }
 
+bool endDrift(bool canceled) {
+  const int64_t sampleUs = drift.phase == DriftPhase::Sample ? esp_timer_get_time() - drift.phaseStartUs : 0;
+  drift.phase = DriftPhase::None;
+  if (!panel.powerOff()) { fault(); return false; }
+  panel.setPairedHold(drift.savedPaired);
+  panel.setWeakState(drift.savedWeak);
+  holdPending = framePrepared = false;
+  Serial.printf("DRIFT_RESULT mode=%s hold_scans=%u hold_busy_us=%llu sample_wall_us=%llu "
+                "total_activations=%u canceled=%d analog_off=1\n",
+                drift.scanning ? "hold" : "idle", drift.scans,
+                (unsigned long long)drift.busyUs, (unsigned long long)sampleUs,
+                2 * kDriftPulses + 1 + drift.scans, canceled);
+  if (!canceled) status();
+  return true;
+}
+
+void startDrift(bool scanning) {
+  if (panel.frameRate() != 5 || panel.scanFirst() != 0 || panel.scanLast() != kHeight - 1) {
+    Serial.println("Drift probe requires fr 5 and scan full."); return;
+  }
+  appleResult.active = false;
+  appleLoop = false;
+  running = false;
+  if (!finishPending()) return;
+  drift = {};
+  drift.scanning = scanning;
+  drift.savedPaired = panel.pairedHold();
+  drift.savedWeak = panel.weakState();
+  canvas.fillScreen(0);
+  canvas.setTextSize(1); canvas.setTextColor(1);
+  canvas.setCursor(28, 4); canvas.print("Static history: ");
+  canvas.print(scanning ? "HOLD" : "IDLE");
+  canvas.setCursor(66, 20); canvas.print("REF");
+  canvas.setCursor(190, 20); canvas.print("RETURN");
+  canvas.setCursor(12, 42); canvas.print("W");
+  for (unsigned x : {42u, 178u}) canvas.drawRect(x, 32, 76, 32, 1);
+  canvas.fillRect(0, 76, 296, 44, 1);
+  canvas.setTextColor(0); canvas.setCursor(12, 94); canvas.print("B");
+  for (unsigned x : {42u, 178u}) canvas.drawRect(x, 84, 76, 32, 0);
+  for (size_t i = 0; i < kFrameBytes; ++i) frame[i] = ~canvas.getBuffer()[i];
+  if (!clean(false)) return;
+  panel.setPairedHold(false); panel.setWeakState(false);
+  if (!panel.prepareFast()) { fault(); return; }
+  // Only alternating 8px squares inside RETURN receive drive. Their neighbors
+  // and both REF patches retain the same-color full-refresh reference.
+  canvas.fillScreen(0);
+  for (unsigned row = 0; row < 3; ++row) for (unsigned col = 0; col < 8; ++col)
+    if ((row + col) % 2 == 0) canvas.fillRect(184 + col * 8, 36 + row * 8, 8, 8, 1);
+  memcpy(planner().black, canvas.getBuffer(), kFrameBytes);
+  canvas.fillScreen(0);
+  for (unsigned row = 0; row < 3; ++row) for (unsigned col = 0; col < 8; ++col)
+    if ((row + col) % 2 == 0) canvas.fillRect(184 + col * 8, 88 + row * 8, 8, 8, 1);
+  memcpy(planner().white, canvas.getBuffer(), kFrameBytes);
+  for (unsigned leg = 0; leg < 2; ++leg) {
+    for (unsigned n = 0; n < kDriftPulses; ++n) {
+      ScanTiming timing;
+      if (!panel.scan(planner().black, planner().white, timing)) { fault(); return; }
+      delay(1);
+    }
+    for (size_t i = 0; i < kFrameBytes; ++i) std::swap(planner().black[i], planner().white[i]);
+  }
+  memset(planner().black, 0, kFrameBytes); memset(planner().white, 0, kFrameBytes);
+  ScanTiming ending;
+  if (!panel.scan(planner().black, planner().white, ending)) { fault(); return; }
+  drift.phase = DriftPhase::Baseline;
+  drift.phaseStartUs = esp_timer_get_time();
+  Serial.printf("DRIFT baseline_ms=3000 mode=%s roundtrip_pulses=%u expected_final=W_top,B_bottom\n",
+                scanning ? "hold" : "idle", kDriftPulses);
+  status();
+}
+
+void serviceDrift() {
+  const int64_t now = esp_timer_get_time();
+  if (drift.phase == DriftPhase::Baseline) {
+    if (now - drift.phaseStartUs < 3000000) return;
+    if (!drift.scanning && !panel.powerOff()) { fault(); return; }
+    drift.phase = DriftPhase::Sample;
+    drift.phaseStartUs = drift.nextScanUs = esp_timer_get_time();
+    Serial.printf("DRIFT sample_ms=%lu mode=%s masks=zero\n", (unsigned long)(kDriftSampleUs / 1000),
+                  drift.scanning ? "hold" : "idle");
+    return;
+  }
+  if (drift.phase != DriftPhase::Sample) return;
+  if (!drift.scanning) {
+    if (now - drift.phaseStartUs >= kDriftSampleUs) endDrift(false);
+    return;
+  }
+  if (now < drift.nextScanUs) return;
+  // Synchronous scan finishes before returning to pollCommands, so canceling
+  // never leaves a separate panel scan pending outside the normal pipeline.
+  ScanTiming timing;
+  if (!panel.scan(planner().black, planner().white, timing)) { fault(); return; }
+  drift.busyUs += timing.busyUs;
+  ++drift.scans;
+  drift.nextScanUs = std::max(drift.phaseStartUs + drift.scans * kDriftPeriodUs, esp_timer_get_time());
+  if (drift.scans % 500 == 0) Serial.printf("DRIFT checkpoint=%u elapsed_ms=%lu\n", drift.scans,
+      (unsigned long)((esp_timer_get_time() - drift.phaseStartUs) / 1000));
+  if (drift.scans == kDriftScans) endDrift(false);
+}
+
 void command(char* text) {
   if (!strcmp(text, "help")) { help(); return; }
   if (!strcmp(text, "status")) { status(); return; }
   if (faulted) { Serial.println("FAULT latched; reset required."); return; }
+  if (drift.phase != DriftPhase::None && !endDrift(true)) return;
   // Any changing command may invalidate the pre-rendered target or its timing.
   pipelinePrepared = pipelineReady = false;
+  if (!strcmp(text, "drift hold") || !strcmp(text, "drift idle")) {
+    startDrift(!strcmp(text, "drift hold")); return;
+  }
   if (!strcmp(text, "pipeline on") || !strcmp(text, "pipeline off")) {
     if (!clean(false)) return;
     pipelineEnabled = !strcmp(text, "pipeline on"); status(); return;
@@ -732,6 +851,7 @@ void setup() {
 
 void loop() {
   pollCommands();
+  if (drift.phase != DriftPhase::None) { serviceDrift(); delay(1); return; }
   if (diagnosticOffUs && esp_timer_get_time() >= diagnosticOffUs) {
     diagnosticOffUs = 0;
     if (!panel.powerOff()) { fault(); return; }

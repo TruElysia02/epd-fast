@@ -163,7 +163,8 @@
   },
   "quality_observation": {
     "status": "user_reported",
-    "maintenance_off": "差别不明显，仍逐渐变灰"
+    "maintenance_off": "差别不明显，仍逐渐变灰",
+    "gray_polarity": "黑白两种区域都有"
   },
   "limits": "One short run per condition. Index coverage is digital, not optical settling. Field aging, partial-transition history and periodic full-refresh artifacts have not been separately measured."
 }
