@@ -197,7 +197,9 @@
     ]
   },
   "quality_observation": {
-    "status": "awaiting_user_feedback"
+    "status": "user_reported",
+    "stable_2": "减轻了，不过稍有拖尾感，不过那些不动的区域刷着刷着还是会变得有点灰且有刷新痕迹",
+    "gray_region_clarification": "主要是画面里动过、后来停住的区域"
   },
   "limits": "Digital source-index coverage and delivered pulse counts do not establish optical improvement. Middle-six-window means exclude the initial window and last window mixed with settling; full-pass counts remain authoritative for index coverage."
 }

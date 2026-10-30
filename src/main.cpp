@@ -25,6 +25,7 @@ uint32_t appleLimitMs = 0;
 bool appleReady = false;
 bool appleLoop = false;
 bool irqWait = false;
+bool maintenanceEnabled = true;
 uint32_t videoFrame = 0, pendingVideoFrame = 0, presentedVideoFrame = UINT32_MAX;
 GFXcanvas1 canvas(kWidth, kHeight);
 uint8_t frame[kFrameBytes];
@@ -34,6 +35,7 @@ enum class Pattern { Blocks, Line, Reverse, Clock, Apple };
 Pattern pattern = Pattern::Blocks;
 bool running = false, faulted = false, holdPending = false;
 bool pending = false, pendingDriven = false, pendingMaintenance = false;
+uint32_t pendingMaintenancePixels = 0;
 bool framePrepared = false, frozen = false;
 uint8_t blackPulses = 7, whitePulses = 7;
 uint16_t speed = 24;
@@ -51,6 +53,7 @@ struct {
   uint32_t contentFrames = 0, skippedFrames = 0;
   uint32_t pipelineStages = 0, pipelineUses = 0;
   uint32_t stableTailPulses = 0;
+  uint32_t maintenanceScans = 0, maintenancePixels = 0;
   uint64_t pipelineCopyUs = 0;
   uint64_t planUs = 0, uploadUs = 0, busyUs = 0, renderUs = 0, commitUs = 0;
   int64_t sinceUs = 0;
@@ -59,6 +62,7 @@ struct {
   bool active = false, naturalEnd = false;
   uint32_t sourceFrames = 0, acceptedIndices = 0, skippedIndices = 0, scans = 0;
   uint32_t stableTailPulses = 0;
+  uint32_t maintenanceScans = 0, maintenancePixels = 0;
   int64_t wallStartUs = 0, cleanWallUs = 0;
 } appleResult;
 
@@ -84,7 +88,7 @@ void fault() {
 }
 
 void help() {
-  Serial.println("fast29 v8 / SSD1680 T94 / XIAO ESP32-C6 / 296x128 landscape");
+  Serial.println("fast29 v9 / SSD1680 T94 / XIAO ESP32-C6 / 296x128 landscape");
   Serial.println("budget | net : full clean, reset model, run selected strategy");
   Serial.println("blocks | line | reverse | clock : change test after full clean");
   Serial.println("fps N : 1..120 scans/s; fps 0 : uncapped (NOT optical settling)");
@@ -112,6 +116,7 @@ void help() {
   Serial.println("history off | history 100|150|200 : experimental return-dose estimate; stops first");
   Serial.println("weak N | weak off : experimental black tail, 1..4 strong doses replaced by twice as many weak scans");
   Serial.println("stable off | stable 2|4 : once-per-target extra strong pulses after ~192ms stable; budget only");
+  Serial.println("maintenance on | maintenance off : 20s net-count correction; stops first, default on; full cleans remain");
   Serial.println("weakprobe N [weak|sameA|sameB] : 1..11 pulses on HOLD/A/test/B patches, then power off");
 }
 
@@ -119,14 +124,14 @@ void status() {
   Serial.printf("mode=%s pattern=%s running=%d fault=%d target_fps=%u spi_mhz=%lu "
                 "end=0x%02x pulses=%u/%u window=%s analog=%d guard_ms=%lu video_loop=%d "
                 "fr=%u gate_first=%u gate_last=%u reuse=%d wait=%s video_ready=%d content_fps=%u "
-                "pipeline=%d paired=%d history=%u weak_tail=%u stable_tail=%u stable_ms=192 version=8\n",
+                "pipeline=%d paired=%d history=%u weak_tail=%u stable_tail=%u stable_ms=192 maintenance=%d version=9\n",
                 modeName(), patternName(), running, faulted, targetFps,
                 (unsigned long)(panel.clock() / 1000000), panel.endOption(), blackPulses, whitePulses,
                 panel.partialUpload() ? "partial" : "full", panel.analogOn(),
                 (unsigned long)fullGuardMs, appleLoop, panel.frameRate(), panel.scanFirst(), panel.scanLast(),
                 panel.reuseMasks(), irqWait ? "irq" : "poll", appleReady, apple.fps(),
                 pipelineEnabled, panel.pairedHold(), planner().reversalPercent(), planner().weakTail(),
-                planner().stableTail());
+                planner().stableTail(), maintenanceEnabled);
   Serial.flush();
 }
 
@@ -219,12 +224,13 @@ void reportAppleResult() {
   const int64_t activeUs = esp_timer_get_time() - appleResult.wallStartUs - appleResult.cleanWallUs;
   Serial.printf("APPLE_RESULT content_fps=%u total_source_frames=%lu accepted_indices=%lu "
                 "skipped_indices=%lu scan_count=%lu elapsed_active_us=%llu clean_wall_us=%llu completed=%d "
-                "stable_tail_pulses=%lu\n",
+                "stable_tail_pulses=%lu maintenance_scans=%lu maintenance_pixels=%lu\n",
                 apple.fps(), (unsigned long)appleResult.sourceFrames,
                 (unsigned long)appleResult.acceptedIndices, (unsigned long)appleResult.skippedIndices,
                 (unsigned long)appleResult.scans, (unsigned long long)activeUs,
                 (unsigned long long)appleResult.cleanWallUs, appleResult.naturalEnd,
-                (unsigned long)appleResult.stableTailPulses);
+                (unsigned long)appleResult.stableTailPulses,
+                (unsigned long)appleResult.maintenanceScans, (unsigned long)appleResult.maintenancePixels);
   appleResult.active = false;
 }
 
@@ -240,7 +246,7 @@ void preparePipeline(int64_t predicted) {
   if (pendingDriven) shadowPlanner->commit(pendingFrame, pendingMaintenance);
   else if (!pendingMaintenance) shadowPlanner->accept(pendingFrame);
   pipelineCommitUs = esp_timer_get_time() - commitStart;
-  pipelineMaintenance = !frozen && mode == DriveMode::Budget &&
+  pipelineMaintenance = maintenanceEnabled && !frozen && mode == DriveMode::Budget &&
                         predicted - lastSettleUs >= 20000000;
   const int64_t planStart = esp_timer_get_time();
   // Use wall time for stability, not the future source-frame prediction.
@@ -271,9 +277,22 @@ bool finishPending() {
   ++scans; ++stats.scans;
   const uint32_t tailPulses = planner().stableTailPulsesDelivered() - tailBefore;
   stats.stableTailPulses += tailPulses;
+  uint32_t maintenancePixels = 0;
+  if (pendingMaintenance && pendingDriven) {
+    // With a staged pipeline the current masks already belong to the next
+    // preview. The scan's pixel count is captured before starting it below.
+    maintenancePixels = pendingMaintenancePixels;
+    ++stats.maintenanceScans;
+    stats.maintenancePixels += maintenancePixels;
+    Serial.printf("MAINTENANCE pixel_pulses=%lu\n", (unsigned long)maintenancePixels);
+  }
   if (appleResult.active) {
     ++appleResult.scans;
     appleResult.stableTailPulses += tailPulses;
+    if (pendingMaintenance && pendingDriven) {
+      ++appleResult.maintenanceScans;
+      appleResult.maintenancePixels += maintenancePixels;
+    }
   }
   stats.uploadUs += timing.uploadUs; stats.busyUs += timing.busyUs;
   lastBusyUs = timing.busyUs;
@@ -411,6 +430,11 @@ void command(char* text) {
   if (!strcmp(text, "pipeline on") || !strcmp(text, "pipeline off")) {
     if (!clean(false)) return;
     pipelineEnabled = !strcmp(text, "pipeline on"); status(); return;
+  }
+  if (!strcmp(text, "maintenance on") || !strcmp(text, "maintenance off")) {
+    if (!clean(false)) return;
+    maintenanceEnabled = !strcmp(text, "maintenance on");
+    status(); return;
   }
   if (!strcmp(text, "paired on") || !strcmp(text, "paired off")) {
     if (!clean(false)) return;
@@ -667,7 +691,8 @@ void reportStats(int64_t now) {
   Serial.printf("MEASURE mode=%s pattern=%s scan_hz=%.2f plan_us=%lu "
                 "upload_us=%lu busy_us=%lu render_us=%lu commit_us=%lu "
                 "overruns=%lu scans=%lu heap=%lu content_hz=%.2f skipped=%lu "
-                "pipeline_used=%lu pipeline_staged=%lu pipeline_copy_us=%lu stable_tail_pulses=%lu\n",
+                "pipeline_used=%lu pipeline_staged=%lu pipeline_copy_us=%lu stable_tail_pulses=%lu "
+                "maintenance_scans=%lu maintenance_pixels=%lu\n",
                 modeName(), patternName(), stats.scans * 1000000.0 / elapsed,
                 (unsigned long)(stats.plans ? stats.planUs / stats.plans : 0),
                 (unsigned long)(stats.scans ? stats.uploadUs / stats.scans : 0),
@@ -679,7 +704,8 @@ void reportStats(int64_t now) {
                 (unsigned long)stats.skippedFrames,
                 (unsigned long)stats.pipelineUses, (unsigned long)stats.pipelineStages,
                 (unsigned long)(stats.pipelineStages ? stats.pipelineCopyUs / stats.pipelineStages : 0),
-                (unsigned long)stats.stableTailPulses);
+                (unsigned long)stats.stableTailPulses,
+                (unsigned long)stats.maintenanceScans, (unsigned long)stats.maintenancePixels);
   resetStats();
 }
 }  // namespace
@@ -737,7 +763,8 @@ void loop() {
   if (scans >= kCleanScans || now - lastCleanUs >= 45000000) { clean(true); return; }
   if (!framePrepared && !frozen) render(now);
   if (faulted) return;
-  const bool maintenance = !frozen && mode == DriveMode::Budget && now - lastSettleUs >= 20000000;
+  const bool maintenance = maintenanceEnabled && !frozen && mode == DriveMode::Budget &&
+                           now - lastSettleUs >= 20000000;
   if (maintenance) lastSettleUs = now;
   const int64_t planStart = esp_timer_get_time();
   bool driven;
@@ -753,6 +780,11 @@ void loop() {
   pipelineReady = false;
   ++stats.plans;
   if (driven || holdPending) {
+    pendingMaintenancePixels = 0;
+    if (maintenance && driven) {
+      for (size_t i = 0; i < kFrameBytes; ++i)
+        pendingMaintenancePixels += __builtin_popcount(unsigned(planner().black[i] | planner().white[i]));
+    }
     memcpy(pendingFrame, frame, kFrameBytes);
     pendingVideoFrame = videoFrame;
     if (!panel.startScan(planner().black, planner().white)) { fault(); return; }
