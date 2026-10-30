@@ -28,6 +28,9 @@ jobs:
           ./build/apple_test build/fixtures/ba29_120.bin build/fixtures/ba29_120.hashes
           ./build/apple_test build/fixtures/baz9_120.bin build/fixtures/baz9_120.hashes
           ./build/apple_test assets/badapple.bin assets/badapple.hashes
+          ./build/apple_test assets/badapple-30fps.bin assets/badapple-30fps.hashes
+          ./build/apple_test assets/badapple-60fps.bin assets/badapple-60fps.hashes
+          ./build/apple_test assets/badapple-120fps-12s.bin assets/badapple-120fps-12s.hashes
           python -m unittest discover -s tests -p 'test_*.py'
       - name: Python syntax
         run: python -m compileall -q tools

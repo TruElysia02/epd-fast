@@ -40,5 +40,115 @@
       "bytes": 4374233,
       "sha256": "6fc436a2b854fc9d794e84be7654206528a1603498333e73949d738475004c5a"
     }
+  },
+  "additional_versions": {
+    "30fps": {
+      "content_fps": 30,
+      "frames": 6962,
+      "key_interval": 30,
+      "duration_seconds": 232.06666666666666,
+      "source_start_seconds": 0,
+      "motion_interpolation": false,
+      "temporal_filter": "none",
+      "pack_options": [
+        "--fps",
+        "30",
+        "--codec",
+        "deflate",
+        "--content-rows",
+        "63",
+        "233",
+        "--temporal-filter",
+        "none"
+      ],
+      "files": {
+        "badapple-30fps.bin": {
+          "bytes": 2192983,
+          "sha256": "b225250ac5eb961646315c71b8712e6e2e5cf92af05b2c983ceff49ff34fc2a2"
+        },
+        "badapple-30fps.hashes": {
+          "bytes": 27848,
+          "sha256": "21f7566b196b4ba4b72ef848ba294cd1c3dbf2b34a5bf184f726b663bae9f688"
+        },
+        "badapple-30fps.mp4": {
+          "bytes": 3377054,
+          "sha256": "7cab378e0d972680577baf5673c049950aa6601f4decfce515563e089bf44a82"
+        }
+      }
+    },
+    "60fps": {
+      "content_fps": 60,
+      "frames": 13920,
+      "key_interval": 60,
+      "duration_seconds": 232.0,
+      "source_start_seconds": 0,
+      "motion_interpolation": true,
+      "temporal_filter": "confirm2",
+      "pack_options": [
+        "--fps",
+        "60",
+        "--codec",
+        "deflate",
+        "--content-rows",
+        "63",
+        "233",
+        "--temporal-filter",
+        "confirm2",
+        "--interpolate"
+      ],
+      "files": {
+        "badapple-60fps.bin": {
+          "bytes": 3260412,
+          "sha256": "e5bddd51ffdacc0d3732fb2c75a8acee5f2338908e7ae0a8a876e62602368b24"
+        },
+        "badapple-60fps.hashes": {
+          "bytes": 55680,
+          "sha256": "28ea76d2e2ae8afd7a24d5739e1ede1f19defa2a441304b4de7ff99aea75ba8e"
+        },
+        "badapple-60fps.mp4": {
+          "bytes": 5173520,
+          "sha256": "4be9b92a8a41f7b72fc41dde7fa415a1ad36dddc97b1e4f94a2059b6e883058b"
+        }
+      }
+    },
+    "120fps-12s": {
+      "content_fps": 120,
+      "frames": 1440,
+      "key_interval": 60,
+      "duration_seconds": 12.0,
+      "source_start_seconds": 10,
+      "motion_interpolation": true,
+      "temporal_filter": "none",
+      "pack_options": [
+        "--fps",
+        "120",
+        "--codec",
+        "deflate",
+        "--content-rows",
+        "63",
+        "233",
+        "--temporal-filter",
+        "none",
+        "--interpolate",
+        "--start",
+        "10",
+        "--duration",
+        "12"
+      ],
+      "files": {
+        "badapple-120fps-12s.bin": {
+          "bytes": 265647,
+          "sha256": "b057c6ba0a4df3da20186e730a782e5c2e30649a80e1b0279c2fd74fb2fe3a30"
+        },
+        "badapple-120fps-12s.hashes": {
+          "bytes": 5760,
+          "sha256": "11968e745afd22082282c0261f7d67f26fbaffa6f0192337a4431e7c6e66a01d"
+        },
+        "badapple-120fps-12s.mp4": {
+          "bytes": 394193,
+          "sha256": "180ed45fc559986f70097ab6cc09c1cd94d00d5aba38f55187ea55325d048600"
+        }
+      }
+    }
   }
 }

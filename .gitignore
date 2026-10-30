@@ -11,5 +11,14 @@ assets/*.mov
 !assets/badapple.bin
 !assets/badapple.hashes
 !assets/badapple-45fps.mp4
+!assets/badapple-30fps.bin
+!assets/badapple-30fps.hashes
+!assets/badapple-30fps.mp4
+!assets/badapple-60fps.bin
+!assets/badapple-60fps.hashes
+!assets/badapple-60fps.mp4
+!assets/badapple-120fps-12s.bin
+!assets/badapple-120fps-12s.hashes
+!assets/badapple-120fps-12s.mp4
 .env
 .env.*

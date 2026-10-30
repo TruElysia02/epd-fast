@@ -11,12 +11,32 @@
 
 MP4 从设备数据解码后旋转回横屏并以 H.264 压缩，展示输入画面，不是实屏拍摄，不包含面板残影或清屏停顿。该版本从 29.97FPS 原片直接运动补帧至 45FPS，没有时间滤波。
 
+另外附带三个版本，均包含无声 MP4、设备数据与逐帧校验值：
+
+| 版本 | MP4 预览 | 设备数据 / 校验值 | 处理方式 |
+| --- | --- | --- | --- |
+| 30FPS 整片，约 232.07 秒、6962 帧 | [观看/下载](badapple-30fps.mp4) | [bin](badapple-30fps.bin) / [hashes](badapple-30fps.hashes) | 从 29.97FPS 转为 30FPS，无运动补帧、无时间滤波 |
+| 60FPS 整片，232 秒、13920 帧 | [观看/下载](badapple-60fps.mp4) | [bin](badapple-60fps.bin) / [hashes](badapple-60fps.hashes) | 运动补帧，启用 `confirm2`；此前设备上保留的 60FPS 版本 |
+| 120FPS 试验短片，12 秒、1440 帧 | [观看/下载](badapple-120fps-12s.mp4) | [bin](badapple-120fps-12s.bin) / [hashes](badapple-120fps-12s.hashes) | 原片第 10…22 秒直接运动补帧，无时间滤波 |
+
+120FPS 这一份是之前实测的短片，未包含整片。三个版本的帧率转换与过滤方式不同，不能仅凭它们把效果差异归因于帧率；同片段对照的条件见 [120FPS 实验](../docs/120fps-experiment.md)。各文件的 SHA256 与生成参数均收录于 [video-manifest.json](video-manifest.json)。
+
 克隆后无需重新转换即可构建和烧录：
 
 ```sh
 pio run -e xiao_esp32c6_video
 pio run -e xiao_esp32c6_video -t upload --upload-port COM7
 ```
+
+要换成其他版本，在构建前将对应的 `.bin` 和 `.hashes` 复制到默认文件名。例如 PowerShell 下切换至 60FPS：
+
+```powershell
+Copy-Item assets/badapple-60fps.bin assets/badapple.bin
+Copy-Item assets/badapple-60fps.hashes assets/badapple.hashes
+pio run -e xiao_esp32c6_video
+```
+
+30FPS 和 120FPS 同理，替换文件名即可；内容帧率记录在数据头中，串口 `fps` 命令不会把一种素材变成另一种帧率。
 
 COM7 需换成自己的串口。若要使用本次观察后保留的配置，可逐行发送以下串口命令；上电默认保持停止，不会自动套用实验参数：
 
