@@ -93,7 +93,7 @@ Windows 可将输出名改为 planner_test.exe / planner_equivalence.exe。测�
 
 ## 可选视频
 
-保留了板载无声视频播放器与转换工具；仓库不附 Bad Apple 视频或转换数据。使用自己有权使用的视频生成数据后，单独编译视频环境，步骤见 [assets/README.md](assets/README.md)。默认版本收到 `apple` 会明确提示视频不可用。
+仓库附带设备目前使用的 **45FPS Bad Apple 整片**：232 秒、10440 帧，包括 [可观看的 MP4](assets/badapple-45fps.mp4)、[设备播放数据](assets/badapple.bin)和逐帧校验值。MP4 展示输入画面，不包含实屏残影。克隆后可直接运行 `pio run -e xiao_esp32c6_video` 构建视频版；来源、转换参数和播放方法见 [assets/README.md](assets/README.md)。默认无视频构建收到 `apple` 仍会明确提示视频不可用。
 
 ## 实验中发现的问题
 

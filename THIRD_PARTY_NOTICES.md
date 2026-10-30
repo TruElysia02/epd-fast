@@ -45,5 +45,10 @@ distributed in this repository, and invoking the converter does not relicense
 its input video or resulting images.
 
 The repository license covers original project code and documentation, not
-external dependencies or any video supplied by the user. No original Bad Apple
-video, soundtrack, or converted video frames are distributed here.
+external dependencies or third-party video imagery. assets/badapple.bin,
+assets/badapple.hashes, and assets/badapple-45fps.mp4 contain converted Bad Apple
+video imagery, excluded from this project's MIT license. The source copy is
+https://github.com/bad-apple-lab/Bad-Apple/blob/main/badapple.mp4.
+The supplied version is motion-interpolated to 45FPS, silent, and 232 seconds
+long; it does not include the original soundtrack. assets/video-manifest.json
+records the source SHA256, processing parameters, and published file hashes.

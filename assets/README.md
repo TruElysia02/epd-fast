@@ -1,6 +1,39 @@
 # 可选板载视频
 
-默认构建不需要本目录中的数据。仓库仅提供转换与播放代码，不分发 Bad Apple 素材、原始视频或其转换产物。
+默认构建不需要本目录中的数据。视频构建可直接使用随仓库提供的 **45FPS Bad Apple 整片**，与当前设备使用的数据一致：
+
+| 文件 | 用途 |
+| --- | --- |
+| [badapple-45fps.mp4](badapple-45fps.mp4) | 296×128、45FPS、232 秒的无声预览，可下载后直接观看 |
+| [badapple.bin](badapple.bin) | 原生 128×296、10440 帧的设备播放数据，2,870,795 字节 |
+| [badapple.hashes](badapple.hashes) | 每帧 FNV-1a 校验值 |
+| [video-manifest.json](video-manifest.json) | 来源、转换参数与各文件 SHA256 |
+
+MP4 从设备数据解码后旋转回横屏并以 H.264 压缩，展示输入画面，不是实屏拍摄，不包含面板残影或清屏停顿。该版本从 29.97FPS 原片直接运动补帧至 45FPS，没有时间滤波。
+
+克隆后无需重新转换即可构建和烧录：
+
+```sh
+pio run -e xiao_esp32c6_video
+pio run -e xiao_esp32c6_video -t upload --upload-port COM7
+```
+
+COM7 需换成自己的串口。若要使用本次观察后保留的配置，可逐行发送以下串口命令；上电默认保持停止，不会自动套用实验参数：
+
+```text
+guard 0
+fr 5
+window partial
+reuse on
+wait irq
+pulse 11 11
+pipeline on
+apple loop
+```
+
+`stop` 停止循环。该配置仍有残影，完整观察与计数见 [45FPS 实验记录](../docs/120fps-experiment.md)。
+
+## 自行转换
 
 准备自己有权使用的视频，并安装 FFmpeg（须能从命令行调用）和 tools/requirements.txt 中的依赖。普通 20FPS 转换与构建：
 
@@ -64,7 +97,7 @@ python tools/pack_apple.py path/to/local-original.mp4 assets/badapple.bin --fps 
 
 ## 桌面解码校验
 
-需先生成 assets/badapple.bin 和同名 .hashes，然后在仓库根目录运行：
+随仓库提供的数据可直接校验；自行转换时也应保留同名 .hashes。在仓库根目录运行：
 
 ```sh
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -Isrc tests/apple_test.cpp lib/miniz/miniz_tinfl.c -o apple_test
@@ -88,4 +121,12 @@ Windows 可将输出名改为 apple_test.exe。测试逐帧核对生成时保存
 
 2026-10-29 的早期 20FPS 实测使用了 [bad-apple-lab/Bad-Apple 中的视频](https://github.com/bad-apple-lab/Bad-Apple/blob/main/badapple.mp4)，4641 帧、232.05 秒，RLE 数据约 3.08MB；完整播放记录见 measurements/video-playback.json。后续 60FPS 数据由本地原片补帧转换生成。来源说明不表示影片、音轨或转换帧获得了本项目 MIT 许可。
 
-120FPS 短片对照同样来自该本地原片，原帧率为 30000/1001；截取 10…22 秒后分别补至 60FPS 和 120FPS。来源元数据记录原片 SHA256、截取区间、补帧与过滤参数、帧数、编码数据 SHA256 和桌面逐帧验证结果。测量记录应将这些来源参数与设备扫描率、实际接受的目标帧率、光学观察分别列出；不将影片或编码帧数据纳入仓库。
+120FPS 短片对照同样来自该本地原片，原帧率为 30000/1001；截取 10…22 秒后分别补至 60FPS 和 120FPS。来源元数据记录原片 SHA256、截取区间、补帧与过滤参数、帧数、编码数据 SHA256 和桌面逐帧验证结果。测量记录将这些来源参数与设备扫描率、实际接受的目标帧率、光学观察分别列出。
+
+仓库附带的整片为后续选定的 45FPS 版本，生成命令为：
+
+```sh
+python tools/pack_apple.py path/to/local-original.mp4 assets/badapple.bin --fps 45 --codec deflate --interpolate --content-rows 63 233 --temporal-filter none
+```
+
+其 SHA256 为 `a9d26bf605b20f2fc856e759a772fff71d18bce279b8d99096eac9ea35cfebdf`。素材是第三方 Bad Apple 影像的转换版本，不纳入本项目代码的 MIT 授权；未附带原片音轨。

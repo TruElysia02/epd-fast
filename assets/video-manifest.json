@@ -1,0 +1,44 @@
+{
+  "source_url": "https://github.com/bad-apple-lab/Bad-Apple/blob/main/badapple.mp4",
+  "source_sha256": "d8339642fd3303a0c4971e1564515e82f69ef61b700ce17b681debb19404c23a",
+  "source_frame_rate": "30000/1001",
+  "content_fps": 45,
+  "frames": 10440,
+  "duration_seconds": 232.0,
+  "native_size": [
+    128,
+    296
+  ],
+  "landscape_size": [
+    296,
+    128
+  ],
+  "pack_options": [
+    "--fps",
+    "45",
+    "--codec",
+    "deflate",
+    "--interpolate",
+    "--content-rows",
+    "63",
+    "233",
+    "--temporal-filter",
+    "none"
+  ],
+  "preview": "MP4 derived from decoded device frames, rotated back to landscape; H.264 CRF 18, yuv420p, silent. It previews the input images, not physical panel ghosting or refresh behavior.",
+  "license_note": "Bad Apple video imagery is third-party material and is excluded from this project MIT license. The original soundtrack is not included.",
+  "files": {
+    "badapple.bin": {
+      "bytes": 2870795,
+      "sha256": "a9d26bf605b20f2fc856e759a772fff71d18bce279b8d99096eac9ea35cfebdf"
+    },
+    "badapple.hashes": {
+      "bytes": 41760,
+      "sha256": "c901c63b6b4f7c01216c130cfa1c7c24bd8cf96dd53bf1cd55815532bb09c9e2"
+    },
+    "badapple-45fps.mp4": {
+      "bytes": 4374233,
+      "sha256": "6fc436a2b854fc9d794e84be7654206528a1603498333e73949d738475004c5a"
+    }
+  }
+}

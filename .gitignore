@@ -8,5 +8,8 @@ assets/*.bin
 assets/*.hashes
 assets/*.mp4
 assets/*.mov
+!assets/badapple.bin
+!assets/badapple.hashes
+!assets/badapple-45fps.mp4
 .env
 .env.*

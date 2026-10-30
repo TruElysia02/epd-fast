@@ -27,6 +27,7 @@ jobs:
           ./build/apple_test build/fixtures/baz9.bin build/fixtures/baz9.hashes
           ./build/apple_test build/fixtures/ba29_120.bin build/fixtures/ba29_120.hashes
           ./build/apple_test build/fixtures/baz9_120.bin build/fixtures/baz9_120.hashes
+          ./build/apple_test assets/badapple.bin assets/badapple.hashes
           python -m unittest discover -s tests -p 'test_*.py'
       - name: Python syntax
         run: python -m compileall -q tools
@@ -34,3 +35,5 @@ jobs:
         run: python -m pip install platformio==6.1.19
       - name: Build firmware without video
         run: pio run -e xiao_esp32c6
+      - name: Build firmware with bundled video
+        run: pio run -e xiao_esp32c6_video
