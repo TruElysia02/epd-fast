@@ -32,4 +32,18 @@
 
 两个固件环境均构建通过。实机先执行 `drift idle` 后立即 `stop`，确认取消结果为 `canceled=1`，正常全刷停机、无遗留扫描故障。随后重新开始正式 `drift hold`：1500 次保持扫描全部完成，累计忙时 12,024,907μs，实际扫描阶段 18,746,462μs，总激活 1527 次。结束时 `running=0 fault=0 analog=0 drift=0`，保留诊断图案供观察。
 
-此结果只验证数字执行与收尾，棋盘纹理出现的时机及灰差仍待用户观察；关电静置的完整对照尚未执行。[首轮原始记录](../measurements/static-drift-probe.json)
+用户随后说明没有观察，因此本轮没有光学质量结论，只验证了数字执行与收尾。不能推断棋盘纹理出现的时机或灰差，关电静置的完整对照也尚未执行。[首轮原始记录](../measurements/static-drift-probe.json)
+
+## 从 OLED 和 LCD 补偿中借鉴的方法
+
+以下是研究后的候选方向，尚未在本实物上实现或验证效果。
+
+OLED 的像素补偿提供了先测量、再与参考比较的思路。LG 对 Pixel Refresher 的说明包含“comparing it with a set reference value”；[OLED 外部补偿研究](https://khu.elsevierpure.com/en/publications/a-charge-integrator-sensing-circuit-for-real-time-external-compen/)则通过感测电流估计驱动晶体管参数。当前接口没有这套逐像素感测能力，可借鉴离线光学校准，而不是将累计脉冲数当成测得的颜色。[LG 官方说明](https://www.lg.com/africa/tvs/oled-tvs/oled-reliability)
+
+按旧状态和新目标查表的响应补偿主要是 LCD 技术。TI 原论文明确表中的补偿值是“experimentally chosen”，即实测选定。[TI 响应补偿原论文](https://www.ti.com/jp/lit/pdf/snla185) 对本屏更有意义的候选是固定 FR5 和既有电压，从白/黑参考出发，分别驱动 1/3/7/11 次后反向，记录返回剂量与停止驱动后 0.2/1/10 秒的相对亮度，建立方向、已给剂量和停留时间的条件表。固定曝光、固定光照的录像可用于相对比较，不直接等同于绝对反射率测量。
+
+此前 history100/150/200 使用线性位置估计和全局倍率，失败不等于实测转移表无效。另一个待测项是保持与关电静置中的状态演化：当前模型默认无脉冲时位置不变；若后续光学观察证实状态仍变化，表中也需包含时间项。不能用这次未观察的探针来预先填写漂移系数。EPD 原始研究明确讨论了“both previous and current images”以及保持时间依赖。[EPD 驱动历史与边缘场研究](https://pmc.ncbi.nlm.nih.gov/articles/PMC6187556/)
+
+预录内容还可以在电脑上先分析未来目标与短暂翻转，再决定输入过滤和驱动调度；已有 confirm2 的主观收益不明确，扩大过滤窗口会损失短线、闪点等细节。OLED 的像素平移和黑帧插入会为本屏增加图像翻转或粒子往返，因此不是当前优先的直接移植方向；这是基于驱动机制的判断，尚非本屏对照结果。[Sony 像素平移说明](https://helpguide.sony.net/tv/dusltn1/v1/en-003/07-01_05.html)、[LG 运动处理说明](https://www.lg.com/ca_en/support/product-support/troubleshoot/help-library/cs-CT52001643-20153085621378/)
+
+EPD 原生的 Ghostbuster 研究也采用预测残影后预补偿源图的方式，先在灰阶源图计算，再抖动成二值输出。其原文强调“color calibration is specific to each EPD device”。纯白/纯黑极值无法继续提亮/加深时，算法会让同区域的干净像素向脏像素靠近，以颜色保真度或对比度换取均匀性；这与本实验希望静止区别变灰的目标存在取舍。论文采用 10.3 英寸 Carta 面板、约 120…150ms 的底层快刷；本实验约 8ms 的子扫描与逐像素预算不是同一更新单位，因此模型与性能不能直接照搬。可借鉴标定方法、时间/边缘残影分别建模，再研究用模型选择脉冲剂量或时序；这一步仍是待验证的设计建议。[作者机构摘要](https://research.polyu.edu.hk/en/publications/ghostbuster-a-software-approach-for-reducing-ghosting-effect-on-e/)、[作者提供的论文全文](https://web.eng.fiu.edu/gaquan/Papers/ESWEEK24Papers/EMSOFT/EMSOFT_40_Hu)

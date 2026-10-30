@@ -59,7 +59,9 @@
     "mode=budget pattern=blocks running=0 fault=0 target_fps=30 spi_mhz=20 end=0x02 pulses=11/11 window=partial analog=0 guard_ms=0 video_loop=0 fr=5 gate_first=0 gate_last=295 reuse=1 wait=irq video_ready=1 content_fps=45 pipeline=1 paired=0 history=0 weak_tail=0 stable_tail=2 stable_ms=192 maintenance=0 drift=0 version=10"
   ],
   "quality_observation": {
-    "status": "awaiting_user_feedback"
+    "status": "not_observed",
+    "observation_note": "用户说明未观察本轮探针",
+    "conclusion": "No optical quality conclusion is available from this run; execution and power-off checks only."
   },
   "device_after_test": "Idle, analog off, diagnostic image retained for observation. Apple loop can resume via normal full-clean start."
 }
